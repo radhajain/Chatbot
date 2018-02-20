@@ -91,9 +91,10 @@ class Chatbot:
         else: 
           #Movie details of form ['Toy Story(1996), 'Adventure|Comedy']
           movieDetails = self.getMovieDetails(matches[0])
+          #Sentiment is either pos or neg
           sentiment = self.classifySentimet(input, matches[0])
           if not movieDetails:
-            return 'Try again lol'
+            return 'Sorry, I didn\'t recognise that movie. Please enter a movie in "quotation marks"'
           else:
             #Store sentiment for movies - string representation of movieDetails
             if repr(movieDetails) in self.userMovies:
@@ -107,9 +108,9 @@ class Chatbot:
           else:
             print self.userMovies
             if sentiment == "pos":
-              return 'You really liked %s. Me too! What\'s another one?' % matches[0]
+              return 'You liked %s. Me too! What\'s one you dislike?' % matches[0]
             else:
-              return 'You did not like %s. It sucks huh. What\'s another one?' % matches[0]
+              return 'You did not like %s. It sucks huh. What\'s one you like?' % matches[0]
             
 
 
@@ -127,10 +128,12 @@ class Chatbot:
 
     
     def classifySentimet(self, response, title):
-      withoutTitle = response.replace(title, '')
+      #Remove the movie title from the response
+      withoutTitle = response.replace("\"" + title + "\"", '')
       countPos = 0
       countNeg = 0
-      for word in response:
+      for word in withoutTitle.split(' '):
+        #need to stem word
         if word in self.sentiment:
           if self.sentiment[word] == "pos":
             countPos += 1
