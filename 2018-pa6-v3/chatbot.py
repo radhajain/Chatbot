@@ -87,14 +87,15 @@ class Chatbot:
         if len(matches) > 1:
           return 'I didn\'t quite understand you. Please only mention one movie per response.'
         elif len(matches) == 0:
-          return 'u no good'
+          
+          return 'Sorry, I don\'t understand. Please enter a movie in "quotation marks"'
         else: 
           #Movie details of form ['Toy Story(1996), 'Adventure|Comedy']
           movieDetails = self.getMovieDetails(matches[0])
           #Sentiment is either pos or neg
           sentiment = self.classifySentimet(input, matches[0])
           if not movieDetails:
-            return 'Sorry, I didn\'t recognise that movie. Please enter a movie in "quotation marks"'
+            return 'Sorry, I don\'t know that movie. Try another'
           else:
             #Store sentiment for movies - string representation of movieDetails
             if repr(movieDetails) in self.userMovies:
@@ -106,7 +107,6 @@ class Chatbot:
             print 'Thank you for your patience, imma tell u a movie'
             self.recommend(self.userMovies)
           else:
-            print self.userMovies
             if sentiment == "pos":
               return 'You liked %s. Me too! What\'s one you dislike?' % matches[0]
             else:
