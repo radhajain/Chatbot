@@ -7,7 +7,7 @@
 ######################################################################
 import csv
 import math
-
+import re
 import numpy as np
 
 from movielens import ratings
@@ -76,13 +76,36 @@ class Chatbot:
         response = 'processed %s in creative mode!!' % input
       else:
         response = 'processed %s in starter mode' % input
+        getMovies = '\"(.*?)\"'
+        matches = re.findall(getMovies, input)
+        print "matches are:"
+        print matches
+        if len(matches) > 1:
+          return 'I didn\'t quite understand you. Please only mention one movie per response.'
+
+        movieDetails = self.getMovieDetails(matches[0])
+        print 'Your movie details are:'
+        print movieDetails
+
+
+
 
       return response
+
+    def getMovieDetails(self, movie):
+      getName = '(.*?)\('
+      #If insufficient: Create bag of words and compare length
+      for i in range(0, len(self.titles)):
+        currMovie = re.search(getName, self.titles[i][0])
+        if (currMovie == movie):
+          return self.titles[i]
+      return "None found"
 
 
     #############################################################################
     # 3. Movie Recommendation helper functions                                  #
     #############################################################################
+
 
     def read_data(self):
       """Reads the ratings matrix from file"""
