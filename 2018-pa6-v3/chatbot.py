@@ -22,7 +22,10 @@ class Chatbot:
     def __init__(self, is_turbo=False):
       self.name = 'moviebot'
       self.is_turbo = is_turbo
+      self.userMovies = {}
+      self.NUMBER_MOVIES = 5
       self.read_data()
+      
 
     #############################################################################
     # 1. WARM UP REPL
@@ -72,18 +75,42 @@ class Chatbot:
       # calling other functions. Although modular code is not graded, it is       #
       # highly recommended                                                        #
       #############################################################################
+      
+
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
       else:
-        response = 'processed %s in starter mode' % input
         getMovies = '\"(.*?)\"'
         matches = re.findall(getMovies, input)
+
+        #If user tries to give more than one movie
         if len(matches) > 1:
           return 'I didn\'t quite understand you. Please only mention one movie per response.'
-        movieDetails = self.getMovieDetails(matches[0])
-        if not movieDetails:
-          return 'Try again lol'
-      return 'You really liked %s. Me too! What\'s another one' % matches[0]
+        elif len(matches) == 0:
+          return 'u no good'
+        else: 
+          #Movie details of form ['Toy Story(1996), 'Adventure|Comedy']
+          movieDetails = self.getMovieDetails(matches[0])
+          sentiment = self.classifySentimet(input, matches[0])
+          if not movieDetails:
+            return 'Try again lol'
+          else:
+            #Store sentiment for movies - string representation of movieDetails
+            if repr(movieDetails) in self.userMovies:
+              return 'You already have %s. Try another one!' % matches[0]
+            self.userMovies[repr(movieDetails)] = sentiment
+
+          if len(self.userMovies) == self.NUMBER_MOVIES:
+            #When we have all the movies we need
+            print 'Thank you for your patience, imma tell u a movie'
+            self.recommend(self.userMovies)
+          else:
+            print self.userMovies
+            if sentiment == "pos":
+              return 'You really liked %s. Me too! What\'s another one?' % matches[0]
+            else:
+              return 'You did not like %s. It sucks huh. What\'s another one?' % matches[0]
+            
 
 
 
@@ -97,6 +124,21 @@ class Chatbot:
           if (currMovie == movie.lower()):
             return self.titles[i]
       return None
+
+    
+    def classifySentimet(self, response, title):
+      withoutTitle = response.replace(title, '')
+      countPos = 0
+      countNeg = 0
+      for word in response:
+        if word in self.sentiment:
+          if self.sentiment[word] == "pos":
+            countPos += 1
+          else:
+            countNeg += 1
+      bestClass = 'pos' if countPos >= countNeg else 'neg'
+      return bestClass
+
 
 
     #############################################################################
@@ -134,7 +176,8 @@ class Chatbot:
       # TODO: Implement a recommendation function that takes a user vector u
       # and outputs a list of movies recommended by the chatbot
 
-      pass
+      print "I'm in reccommend!!!!!!"
+      return ["Me", "Seb"]
 
 
     #############################################################################
