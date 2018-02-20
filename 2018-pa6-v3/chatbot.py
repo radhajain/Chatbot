@@ -34,7 +34,7 @@ class Chatbot:
       # TODO: Write a short greeting message                                      #
       #############################################################################
 
-      greeting_message = 'How can I help you?'
+      greeting_message = 'Hi! Tell me about a movie you like'
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -78,28 +78,25 @@ class Chatbot:
         response = 'processed %s in starter mode' % input
         getMovies = '\"(.*?)\"'
         matches = re.findall(getMovies, input)
-        print "matches are:"
-        print matches
         if len(matches) > 1:
           return 'I didn\'t quite understand you. Please only mention one movie per response.'
-
         movieDetails = self.getMovieDetails(matches[0])
-        print 'Your movie details are:'
-        print movieDetails
+        if not movieDetails:
+          return 'Try again lol'
+      return 'You really liked %s. Me too! What\'s another one' % matches[0]
 
 
-
-
-      return response
 
     def getMovieDetails(self, movie):
-      getName = '(.*?)\('
+      getName = '(.*?)(?:\s\()'
       #If insufficient: Create bag of words and compare length
       for i in range(0, len(self.titles)):
-        currMovie = re.search(getName, self.titles[i][0])
-        if (currMovie == movie):
-          return self.titles[i]
-      return "None found"
+        potentialMovies = re.findall(getName, self.titles[i][0])
+        if (potentialMovies):
+          currMovie = potentialMovies[0].lower()
+          if (currMovie == movie.lower()):
+            return self.titles[i]
+      return None
 
 
     #############################################################################
