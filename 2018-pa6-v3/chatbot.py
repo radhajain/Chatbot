@@ -102,7 +102,9 @@ class Chatbot:
         '''
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
-    
+        print self.checkForMovie(input)
+        return response
+
 
 
 
@@ -177,7 +179,7 @@ class Chatbot:
           words = input.split(' ')
           capitalized_word_idx = None
           for i, w in enumerate(words):
-            if (w[0].isupper()):
+            if (w.istitle()):
               capitalized_word_idx = i 
               break
           for i in range(capitalized_word_idx + 1, len(words)):
@@ -188,8 +190,8 @@ class Chatbot:
         else:
           potential_title = matches[0]
           movieTitle = self.getMovieDetails(potential_title)
-           if movieTitle:
-              return movieTitle
+          if movieTitle:
+            return movieTitle
 
 
 
@@ -222,7 +224,11 @@ class Chatbot:
         getName = '(.*?)(?:\s\()'
         for i in range(0, len(self.titles)):
           #Spellcheck add here?
-          potential_title = re.findall(getName, self.titles[i])
+          #If matches with a date
+          if self.titles[i][0].lower() == movie.lower():
+            return (tuple(self.titles[i]),i)
+          #Else extract name only
+          potential_title = re.findall(getName, self.titles[i][0])
           if (potential_title):
             if movie.lower() == potential_title[0].lower():
              return (tuple(self.titles[i]),i)
