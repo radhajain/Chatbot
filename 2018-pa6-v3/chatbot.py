@@ -105,17 +105,6 @@ class Chatbot:
         print self.checkForMovie(input)
         return response
 
-
-
-
-
-
-
-
-
-
-
-
       else:
         #Starter mode: 
         #Takes in a movie: "Ladybird (2017)"
@@ -179,10 +168,11 @@ class Chatbot:
           words = input.split(' ')
           capitalized_word_idx = None
           for i, w in enumerate(words):
-            if (w.istitle()):
+            #Ignore if the first letter is capitalized
+            if (w.istitle()) and i > 0:
               capitalized_word_idx = i 
               break
-          for i in range(capitalized_word_idx + 1, len(words)):
+          for i in range(capitalized_word_idx + 1, len(words) + 1):
             potential_title = " ".join(words[capitalized_word_idx:i])
             movieTitle = self.getMovieDetails(potential_title)
             if movieTitle:
