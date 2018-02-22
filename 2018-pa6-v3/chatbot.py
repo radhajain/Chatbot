@@ -4,6 +4,14 @@
 # PA6, CS124, Stanford, Winter 2018
 # v.1.0.2
 # Original Python code by Ignacio Cases (@cases)
+
+
+# TODO STARTER:
+#Ensure runs in less than 5 seconds
+# Don't repeat same output (e.g. use getPositiveResponse)
+
+
+
 ######################################################################
 import csv
 import math
@@ -12,6 +20,7 @@ import numpy as np
 
 from movielens import ratings
 from random import randint
+from PorterStemmer import PorterStemmer
 
 class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
@@ -20,11 +29,16 @@ class Chatbot:
     # `moviebot` is the default chatbot. Change it to your chatbot's name       #
     #############################################################################
     def __init__(self, is_turbo=False):
-      self.name = 'moviebot'
+      self.name = 'seb'
       self.is_turbo = is_turbo
       self.userMovies = {}
       self.NUMBER_MOVIES = 5
+      self.p = PorterStemmer()
+      self.alphanum = re.compile('[^a-zA-Z0-9]')
+      self.negativeWords = {"nt", "not", "no", "never"}
+      self.punctation = ".,!?;:"
       self.read_data()
+      
       
 
     #############################################################################
@@ -37,7 +51,7 @@ class Chatbot:
       # TODO: Write a short greeting message                                      #
       #############################################################################
 
-      greeting_message = 'Hi! Tell me about a movie you like'
+      greeting_message = 'Hi! I\'m MovieBot! I\'m going to recommend a movie to you. First I will ask you about your taste in movies. Tell me about a movie that you have seen.'
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -51,7 +65,7 @@ class Chatbot:
       # TODO: Write a short farewell message                                      #
       #############################################################################
 
-      goodbye_message = 'Have a nice day!'
+      goodbye_message = 'Thank you! Have a nice day!'
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -76,70 +90,117 @@ class Chatbot:
       # highly recommended                                                        #
       #############################################################################
       
+      if input == ":quit":
+        return goodbye_message
 
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
       else:
         getMovies = '\"(.*?)\"'
         matches = re.findall(getMovies, input)
+        print matches
 
         #If user tries to give more than one movie
         if len(matches) > 1:
           return 'I didn\'t quite understand you. Please only mention one movie per response.'
         elif len(matches) == 0:
-          
           return 'Sorry, I don\'t understand. Please enter a movie in "quotation marks"'
         else: 
-          #Movie details of form ['Toy Story(1996), 'Adventure|Comedy']
+          stemmed = self.stem(input)
+          print "After stemming: %s" % stemmed
+          withoutTitle = stemmed.replace("\"" + matches[0] + "\"", '')
+          #Must include a sentiment, e.g. "I like..."
+          if not withoutTitle:
+            return 'Tell me more about "%s"' % matches[0]
+
+          #Movie details of form (['Toy Story(1996), 'Adventure|Comedy'], 74)
           movieDetails = self.getMovieDetails(matches[0])
           #Sentiment is either pos or neg
-          sentiment = self.classifySentimet(input, matches[0])
+          sentiment = self.classifySentimet(withoutTitle)
           if not movieDetails:
             return 'Sorry, I don\'t know that movie. Try another'
           else:
             #Store sentiment for movies - string representation of movieDetails
-            if repr(movieDetails) in self.userMovies:
+            if (movieDetails) in self.userMovies:
               return 'You already have %s. Try another one!' % matches[0]
-            self.userMovies[repr(movieDetails)] = sentiment
+            self.userMovies[movieDetails] = sentiment
 
           if len(self.userMovies) == self.NUMBER_MOVIES:
             #When we have all the movies we need
-            print 'Thank you for your patience, imma tell u a movie'
-            self.recommend(self.userMovies)
+            recedMovies = self.recommend(self.userMovies)
+            return 'Thank you for your patience, That\'s enough for me to make a recommendation. These are the movies you like: %s' % str(recedMovies)
           else:
-            if sentiment == "pos":
-              return 'You liked %s. Me too! What\'s one you dislike?' % matches[0]
+            if sentiment == 1:
+              return 'You liked %s. Me too! Tell me about another movie you have seen.' % movieDetails[0][0]
             else:
-              return 'You did not like %s. It sucks huh. What\'s one you like?' % matches[0]
+              return 'You did not like %s. It sucks huh. Tell me about another movie you have seen.' % movieDetails[0][0]
             
+
+
+    def getPositiveResponses(self, movie):
+      #Remeber responses seen, and pick a new one
+      pass
+
+
+    def getNegativeResponses(self,movie):
+      pass
+
+
+
+    def stem(self, line):
+      # make sure everything is lower case
+      line = line.lower()
+      # split on whitespace
+      line = [xx.strip() for xx in line.split()]
+      # remove non alphanumeric characters
+      line = [self.alphanum.sub('', xx) for xx in line]
+      # remove any words that are now empty
+      line = [xx for xx in line if xx != '']
+      # stem words
+      line = [self.p.stem(xx) for xx in line]
+      # add to the document's conents
+      return " ".join(line)
 
 
 
     def getMovieDetails(self, movie):
-      getName = '(.*?)(?:\s\()'
+      print movie
+      # getName = '(.*?)(?:\s\()'
       #If insufficient: Create bag of words and compare length
       for i in range(0, len(self.titles)):
-        potentialMovies = re.findall(getName, self.titles[i][0])
-        if (potentialMovies):
-          currMovie = potentialMovies[0].lower()
-          if (currMovie == movie.lower()):
-            return self.titles[i]
+        # potentialMovies = re.findall(getName, self.titles[i][0])
+        if (self.titles[i][0].lower() == movie.lower()):
+          return (tuple(self.titles[i]),i)
       return None
 
     
-    def classifySentimet(self, response, title):
+    def classifySentimet(self, withoutTitle):
       #Remove the movie title from the response
-      withoutTitle = response.replace("\"" + title + "\"", '')
       countPos = 0
       countNeg = 0
+      neg_state = False
       for word in withoutTitle.split(' '):
         #need to stem word
+        if any(punc in word for punc in self.punctation):
+          neg_state = False
+
+        if any(neg in word for neg in self.negativeWords):
+          neg_state = not neg_state
+
         if word in self.sentiment:
           if self.sentiment[word] == "pos":
-            countPos += 1
+            if neg_state:
+              countNeg += 1
+            else:
+              countPos += 1
           else:
-            countNeg += 1
-      bestClass = 'pos' if countPos >= countNeg else 'neg'
+            if neg_state:
+              countPos += 1
+            else:
+              countNeg += 1
+
+
+      bestClass = 1 if countPos >= countNeg else -1
       return bestClass
 
 
@@ -157,30 +218,61 @@ class Chatbot:
       self.titles, self.ratings = ratings()
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
+      self.sentiment = {self.p.stem(k):v for k,v in self.sentiment.iteritems()}
+      print self.sentiment.keys()[:10]
+
 
 
     def binarize(self):
       """Modifies the ratings matrix to make all of the ratings binary"""
+      for i in range(0, len(self.ratings)):
+        for j in range (0, len(self.ratings[i])):
+          if (self.ratings[i][j] >= 2.5):
+            self.ratings[i][j] = 1
+          elif (self.ratings[i][j] == 0):
+             self.ratings[i][j] = 0
+          else:
+            self.ratings[i][j] = -1
 
-      pass
 
 
-    def distance(self, u, v):
-      """Calculates a given distance function between vectors u and v"""
-      # TODO: Implement the distance function between vectors u and v]
-      # Note: you can also think of this as computing a similarity measure
 
-      pass
+    def findSimilarity(self, movie, userMovie):
+      #Find the cosine similarity between the binarized rating vector for movie and for userMovie
+      userRating = np.array(self.ratings[userMovie[1]])
+      movieRating = np.array(self.ratings[movie[1]])
+      denom = (np.linalg.norm(userRating) * np.linalg.norm(movieRating))
+      if denom == 0: 
+        return 0
+      similarity = userRating.dot(movieRating) / denom
+      return similarity
 
+
+
+      
 
     def recommend(self, u):
       """Generates a list of movies based on the input vector u using
       collaborative filtering"""
-      # TODO: Implement a recommendation function that takes a user vector u
-      # and outputs a list of movies recommended by the chatbot
 
-      print "I'm in reccommend!!!!!!"
-      return ["Me", "Seb"]
+      self.binarize()
+      print "done binasing"
+      #Stores the rxi's
+      ratingSums = {}
+      for idx, movie in enumerate(self.titles):
+        movie = tuple(movie)
+        for userMovie in self.userMovies:
+          if userMovie[0] == movie:
+            continue
+          similarity = self.findSimilarity((movie, idx), userMovie)
+          rating = self.userMovies[userMovie]
+          ratingSums[movie] = ratingSums.get(movie,0) + (similarity * rating)
+
+      values = np.array(ratingSums.values())
+      keys = np.array(ratingSums.keys())
+      bestMovieIndices = np.argsort(values)
+      bestMovies = keys[bestMovieIndices][::-1][:10]
+      return bestMovies
 
 
     #############################################################################
