@@ -93,9 +93,31 @@ class Chatbot:
       if input == ":quit":
         return goodbye_message
 
+        '''
+        TO-DO:
+          - What kind of film do you want to watch (options: highly-rated, recently released, genre, year) e.g. I like action moves from 2000 on?
+          - Ask them about the most statistically significant movies?
+          - Give them a list of top 10 e.g. ask which theyve seen and how they liked them
+          - Give the real reccccc
+        '''
       if self.is_turbo == True:
         response = 'processed %s in creative mode!!' % input
+    
+
+
+
+
+
+
+
+
+
+
+
       else:
+        #Starter mode: 
+        #Takes in a movie: "Ladybird (2017)"
+        #Checks in movies array for [Ladybird (2017), ... ,...]
         getMovies = '\"(.*?)\"'
         matches = re.findall(getMovies, input)
         print matches
@@ -146,6 +168,30 @@ class Chatbot:
       pass
 
 
+    def checkForMovie(self, input):
+        #Takes in e.g. "Ladybird" or "Ladybird (2017)"
+        #Checks database for Ladybird or Ladybird (2017)
+        getMovies = '\"(.*?)\"'
+        matches = re.findall(getMovies, input)
+        if (not matches):
+          words = input.split(' ')
+          capitalized_word_idx = None
+          for i, w in enumerate(words):
+            if (w[0].isupper()):
+              capitalized_word_idx = i 
+              break
+          for i in range(capitalized_word_idx + 1, len(words)):
+            potential_title = " ".join(words[capitalized_word_idx:i])
+            movieTitle = self.getMovieDetails(potential_title)
+            if movieTitle:
+              return movieTitle
+        else:
+          potential_title = matches[0]
+          movieTitle = self.getMovieDetails(potential_title)
+           if movieTitle:
+              return movieTitle
+
+
 
     def stem(self, line):
       # make sure everything is lower case
@@ -164,14 +210,25 @@ class Chatbot:
 
 
     def getMovieDetails(self, movie):
-      print movie
-      # getName = '(.*?)(?:\s\()'
+      
       #If insufficient: Create bag of words and compare length
-      for i in range(0, len(self.titles)):
-        # potentialMovies = re.findall(getName, self.titles[i][0])
-        if (self.titles[i][0].lower() == movie.lower()):
-          return (tuple(self.titles[i]),i)
-      return None
+      if not self.is_turbo:
+        for i in range(0, len(self.titles)):
+          if (self.titles[i][0].lower() == movie.lower()):
+            return (tuple(self.titles[i]),i)
+        return None
+      else:
+        #Only checks the name of the film (not the date)
+        getName = '(.*?)(?:\s\()'
+        for i in range(0, len(self.titles)):
+          #Spellcheck add here?
+          potential_title = re.findall(getName, self.titles[i])
+          if (potential_title):
+            if movie.lower() == potential_title[0].lower():
+             return (tuple(self.titles[i]),i)
+        return None
+
+
 
     
     def classifySentimet(self, withoutTitle):
@@ -219,7 +276,7 @@ class Chatbot:
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
       self.sentiment = {self.p.stem(k):v for k,v in self.sentiment.iteritems()}
-      print self.sentiment.keys()[:10]
+      self.binarize()
 
 
 
@@ -255,7 +312,6 @@ class Chatbot:
       """Generates a list of movies based on the input vector u using
       collaborative filtering"""
 
-      self.binarize()
       print "done binasing"
       #Stores the rxi's
       ratingSums = {}
