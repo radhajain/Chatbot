@@ -19,6 +19,7 @@ import re
 import numpy as np
 
 from movielens import ratings
+import random
 from random import randint
 from PorterStemmer import PorterStemmer
 
@@ -37,6 +38,21 @@ class Chatbot:
       self.alphanum = re.compile('[^a-zA-Z0-9]')
       self.negativeWords = {"nt", "not", "no", "never"}
       self.punctation = ".,!?;:"
+      self.positiveResponses = ["You liked %s. Me too! Tell me about another movie you have seen.",
+      "Yeah, %s was a great movie. What's another movie you remember?",
+      "I loved %s! Tell me another one.",
+      "I'm a huge fan of %s. Any other ones?",
+      "Ooh %s is a good one. Tell me about another!",
+      "%s was a great movie! Tell me about another?"
+      "%s is definitely one of my favorites!! What's another movie you remember?"]
+      self.seenPositive = []
+      self.negativeResponses = ["I agree, %s was pretty bad. Tell me about another movie!",
+      "%s sucks right. Tell me about another movie you have seen.", 
+      "I didn't like %s either. What's another movie you remember?",
+      "Yeah %s wasn't very good. Any other movies?",
+      "Honestly was very disappointed by %s. Are there any other movies you remember?",
+      "What a shame, I had such high hopes for %s. Tell me about another movie."]
+      self.seenNegative = []
       self.read_data()
       
       
@@ -111,7 +127,6 @@ class Chatbot:
         #Checks in movies array for [Ladybird (2017), ... ,...]
         getMovies = '\"(.*?)\"'
         matches = re.findall(getMovies, input)
-        print matches
 
         #If user tries to give more than one movie
         if len(matches) > 1:
@@ -119,23 +134,24 @@ class Chatbot:
         elif len(matches) == 0:
           return 'Sorry, I don\'t understand. Please enter a movie in "quotation marks"'
         else: 
-          stemmed = self.stem(input)
-          print "After stemming: %s" % stemmed
-          withoutTitle = stemmed.replace("\"" + matches[0] + "\"", '')
-          #Must include a sentiment, e.g. "I like..."
-          if not withoutTitle:
-            return 'Tell me more about "%s"' % matches[0]
-
           #Movie details of form (['Toy Story(1996), 'Adventure|Comedy'], 74)
           movieDetails = self.getMovieDetails(matches[0])
+          withoutTitle = input.replace("\"" + matches[0] + "\"", '')
+        
+          #Must include a sentiment, e.g. "I like..."
+          if not withoutTitle:
+            return 'How did you like "%s"?' % matches[0]
+
           #Sentiment is either pos or neg
-          sentiment = self.classifySentimet(withoutTitle)
+          stemmed = self.stem(withoutTitle)
+          sentiment = self.classifySentimet(stemmed)
+
           if not movieDetails:
-            return 'Sorry, I don\'t know that movie. Try another'
+            return 'Sorry, I don\'t know the movie %s. Try another' % matches[0]
           else:
             #Store sentiment for movies - string representation of movieDetails
             if (movieDetails) in self.userMovies:
-              return 'You already have %s. Try another one!' % matches[0]
+              return 'You already told me about %s. Try another one!' % matches[0]
             self.userMovies[movieDetails] = sentiment
 
           if len(self.userMovies) == self.NUMBER_MOVIES:
@@ -144,19 +160,26 @@ class Chatbot:
             return 'Thank you for your patience, That\'s enough for me to make a recommendation. These are the movies you like: %s' % str(recedMovies)
           else:
             if sentiment == 1:
-              return 'You liked %s. Me too! Tell me about another movie you have seen.' % movieDetails[0][0]
+              response = self.getResponse("pos")
+              return response % movieDetails[0][0]
             else:
-              return 'You did not like %s. It sucks huh. Tell me about another movie you have seen.' % movieDetails[0][0]
+              response = self.getResponse("neg")
+              return response % movieDetails[0][0]
             
 
 
-    def getPositiveResponses(self, movie):
+    def getResponse(self, sentiment):
       #Remeber responses seen, and pick a new one
-      pass
+      if sentiment == "pos":
+        response = random.choice(self.positiveResponses)
+        self.positiveResponses.remove(response)
+        self.seenPositive.append(response)   
+      else:
+        response = random.choice(self.negativeResponses)
+        self.negativeResponses.remove(response)
+        self.seenNegative.append(response)
+      return response
 
-
-    def getNegativeResponses(self,movie):
-      pass
 
 
     def checkForMovie(self, input):
@@ -277,6 +300,7 @@ class Chatbot:
 
 
     def binarize(self):
+      ##***NEEDS TO BE FASTER
       """Modifies the ratings matrix to make all of the ratings binary"""
       for i in range(0, len(self.ratings)):
         for j in range (0, len(self.ratings[i])):
