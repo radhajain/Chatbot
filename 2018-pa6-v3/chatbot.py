@@ -23,6 +23,8 @@ import random
 from random import randint
 from PorterStemmer import PorterStemmer
 
+import pdb
+
 class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
 
@@ -30,30 +32,53 @@ class Chatbot:
     # `moviebot` is the default chatbot. Change it to your chatbot's name       #
     #############################################################################
     def __init__(self, is_turbo=False):
-      self.name = 'seb'
+      ### BASIC PARAMETERS ###
+      self.name = 'Seb'
       self.is_turbo = is_turbo
-      self.userMovies = {}
-      self.NUMBER_MOVIES = 5
-      self.p = PorterStemmer()
+      
+      ### CONSTANTS ###
+      self.NUM_MOVIES_MIN = 5
+      self.BINARY_THRESH = 2.5
+
+      ### TOKEN SETS ###
+      self.eng_articles = {'The', 'A', 'An'}
+      self.negationTokens = {"nt", "not", "no", "never"}
+      self.punctuation = ".,!?;:"
       self.alphanum = re.compile('[^a-zA-Z0-9]')
-      self.negativeWords = {"nt", "not", "no", "never"}
-      self.punctation = ".,!?;:"
-      self.positiveResponses = ["You liked %s. Me too! Tell me about another movie you have seen.",
-      "Yeah, %s was a great movie. What's another movie you remember?",
-      "I loved %s! Tell me another one.",
-      "I'm a huge fan of %s. Any other ones?",
-      "Ooh %s is a good one. Tell me about another!",
-      "%s was a great movie! Tell me about another?"
-      "%s is definitely one of my favorites!! What's another movie you remember?"]
-      self.seenPositive = []
-      self.negativeResponses = ["I agree, %s was pretty bad. Tell me about another movie!",
-      "%s sucks right. Tell me about another movie you have seen.", 
-      "I didn't like %s either. What's another movie you remember?",
-      "Yeah %s wasn't very good. Any other movies?",
-      "Honestly was very disappointed by %s. Are there any other movies you remember?",
-      "What a shame, I had such high hopes for %s. Tell me about another movie."]
-      self.seenNegative = []
-      self.read_data()
+
+      ### UTILS ###
+      self.p = PorterStemmer()
+
+      ### DATA ###
+      self.read_data() # self.titles, self.ratings, self.sentiment
+      self.userMovies = {}
+      self.userMovies = {(idx, movieDetails[0]):1 for idx, movieDetails in list(enumerate(self.titles))[:4]}
+      self.returnedMovies = set()
+      
+      ### RESPONSE SETS ###
+      self.positiveResponses = ["You liked %s. Me too!",
+                                "Yeah, %s was a great movie.",
+                                "I loved %s! Glad you enjoyed it too.",
+                                "I'm a huge fan of %s. I'm glad you liked it.",
+                                "Ooh %s is a good one.",
+                                "You're absolutely right! %s was a great movie!"
+                                "Right on! %s is definitely one of my favorites!!"]
+
+      self.negativeResponses = ["I agree, %s was pretty bad.",
+                                "I didn't like %s either.",
+                                "Yeah %s wasn't very good.",
+                                "I hear you -- I was very disappointed by %s, too.",
+                                "I know what you mean. It's such a shame, I had such high hopes for %s."]
+      
+      self.requestAnotherResponses = ['Tell me about another movie you have seen.', 
+                                      "What's another movie you remember?", 
+                                      "Tell me another one.", 
+                                      "Any other ones?",
+                                      "Tell me about another!",
+                                      "What's another movie you remember?",
+                                      "Tell me about another movie!",
+                                      "Any other movies?",
+                                      "Are there any other movies you remember?"]
       
       
 
@@ -67,7 +92,7 @@ class Chatbot:
       # TODO: Write a short greeting message                                      #
       #############################################################################
 
-      greeting_message = 'Hi! I\'m MovieBot! I\'m going to recommend a movie to you. First I will ask you about your taste in movies. Tell me about a movie that you have seen.'
+      greeting_message = "Hi! I'm " + self.name + "! I'm going to recommend a movie to you.\nFirst I will ask you about your taste in movies. Tell me about a movie that you have seen."
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -81,7 +106,7 @@ class Chatbot:
       # TODO: Write a short farewell message                                      #
       #############################################################################
 
-      goodbye_message = 'Thank you! Have a nice day!'
+      goodbye_message = "Thank you for hanging out with me! Stay in touch! Goodbye!"
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -116,71 +141,78 @@ class Chatbot:
           - Give them a list of top 10 e.g. ask which theyve seen and how they liked them
           - Give the real reccccc
         '''
-      if self.is_turbo == True:
-        response = 'processed %s in creative mode!!' % input
-        print self.checkForMovie(input)
+      if self.is_turbo:
+        return self.processCreative(input)
+      else:
+        return self.processStarter(input)
+        
+    
+    ### Processes input for starter version ###
+    def processStarter(self, input):
+      ### If we already have the minimum number of movies, give them another recommendation ###
+      if (len(self.userMovies) >= self.NUM_MOVIES_MIN):
+        recommendation = self.recommend()
+        response =  'I suggest you watch "%s".\n' % recommendation + \
+                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
         return response
 
-      else:
-        #Starter mode: 
-        #Takes in a movie: "Ladybird (2017)"
-        #Checks in movies array for [Ladybird (2017), ... ,...]
-        getMovies = '\"(.*?)\"'
-        matches = re.findall(getMovies, input)
+      getMovies = '\"(.*?)\"'
+      matches = re.findall(getMovies, input)
 
-        #If user tries to give more than one movie
-        if len(matches) > 1:
-          return 'I didn\'t quite understand you. Please only mention one movie per response.'
-        elif len(matches) == 0:
-          return 'Sorry, I don\'t understand. Please enter a movie in "quotation marks"'
-        else: 
-          #Movie details of form (['Toy Story(1996), 'Adventure|Comedy'], 74)
-          movieDetails = self.getMovieDetails(matches[0])
-          withoutTitle = input.replace("\"" + matches[0] + "\"", '')
-        
-          #Must include a sentiment, e.g. "I like..."
-          if not withoutTitle:
-            return 'How did you like "%s"?' % matches[0]
+      ### If user tries to give more than one movie ###
+      if len(matches) > 1:
+        return "Please tell me about one movie at a time. Go ahead."
 
-          #Sentiment is either pos or neg
-          stemmed = self.stem(withoutTitle)
-          sentiment = self.classifySentimet(stemmed)
+      ### If no movie is specified in quotation marks ###
+      elif len(matches) == 0:
+        return "Sorry, I don't understand. Tell me about a movie that you have seen e.g. 'I liked \"Toy Story (1995)\"'"
 
-          if not movieDetails:
-            return 'Sorry, I don\'t know the movie %s. Try another' % matches[0]
-          else:
-            #Store sentiment for movies - string representation of movieDetails
-            if (movieDetails) in self.userMovies:
-              return 'You already told me about %s. Try another one!' % matches[0]
-            self.userMovies[movieDetails] = sentiment
+      else: 
+        userMovie = matches[0]
+        movieDetails = self.getMovieDetailsStarter(userMovie)
 
-          if len(self.userMovies) == self.NUMBER_MOVIES:
-            #When we have all the movies we need
-            recedMovies = self.recommend(self.userMovies)
-            return 'Thank you for your patience, That\'s enough for me to make a recommendation. These are the movies you like: %s' % str(recedMovies)
-          else:
-            if sentiment == 1:
-              response = self.getResponse("pos")
-              return response % movieDetails[0][0]
-            else:
-              response = self.getResponse("neg")
-              return response % movieDetails[0][0]
-            
+        ### The movie is not in the database ###
+        if (not movieDetails):
+          return "I'm sorry, I haven't seen that one yet! Please tell me about another movie."
 
+        ### The user has already given us this movie ###
+        if movieDetails in self.userMovies:
+          return 'You mentioned that one already. Please tell me another.'
 
-    def getResponse(self, sentiment):
-      #Remeber responses seen, and pick a new one
-      if sentiment == "pos":
-        response = random.choice(self.positiveResponses)
-        self.positiveResponses.remove(response)
-        self.seenPositive.append(response)   
-      else:
-        response = random.choice(self.negativeResponses)
-        self.negativeResponses.remove(response)
-        self.seenNegative.append(response)
+        ### Remove extraneous whitespace ###
+        withoutTitle = input.replace("\"" + userMovie + "\"", '').strip()
+      
+        ### Must include a sentiment, e.g. "I like..." ###
+        if not withoutTitle:
+          return 'How did you like "%s"?' % userMovie
+
+        ### Classify sentiment ###
+        sentiment = self.classifySentiment(withoutTitle)
+        if (not sentiment):
+          return 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".' % (userMovie, userMovie)
+
+        idx, movie = movieDetails
+        self.userMovies[movieDetails] = sentiment
+        if (sentiment > 0):
+          response = random.choice(self.positiveResponses) % userMovie
+        else:
+          response = random.choice(self.negativeResponses) % userMovie
+
+        ### We have collected a sufficient number of movies ###
+        if len(self.userMovies) >= self.NUM_MOVIES_MIN:
+          recommendation = self.recommend()
+          response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
+                      'I suggest you watch "%s".\n' % recommendation + \
+                      "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
+        else:
+          response += ' ' + random.choice(self.requestAnotherResponses)
+
+        return response  
+
+    ### Processes input for creative version ###
+    def processCreative(self, input):
+      ### TO-DO ###
       return response
-
-
 
     def checkForMovie(self, input):
         #Takes in e.g. "Ladybird" or "Ladybird (2017)"
@@ -206,64 +238,53 @@ class Chatbot:
           if movieTitle:
             return movieTitle
 
+    ### Returns the idx into self.titles and the movie title of 'movie' ###
+    ### 'movie' must match the title in self.titles exactly.            ###
+    def getMovieDetailsStarter(self, movie):
+      movieWordTokens = movie.split()
+      if movieWordTokens and movieWordTokens[0] in self.eng_articles: # check not empty and first word is an article
+        ### Transforms movie title of the form 'An American in Paris (1951)' to 'American in Paris, An (1951)'
+        movie = ' '.join(movieWordTokens[1:-1]) + ', ' + movieWordTokens[0] + ' ' + movieWordTokens[-1]
 
+      for idx, movieDetails in enumerate(self.titles):
+        title, genre = movieDetails
+        if title == movie:
+          return idx, title
 
+      return None
+
+    ### Returns an array of stemmed words ###
     def stem(self, line):
       # make sure everything is lower case
       line = line.lower()
+      # insert a space before every punctuation mark
+      punc_regex = '[' + self.punctuation + ']'
+      line = re.sub(punc_regex, lambda x: " " + x.group(0), line)
       # split on whitespace
       line = [xx.strip() for xx in line.split()]
-      # remove non alphanumeric characters
-      line = [self.alphanum.sub('', xx) for xx in line]
+      # remove non alphanumeric characters contained in words, solitary punctuation is left untouched
+      line = [xx if xx in self.punctuation else self.alphanum.sub('', xx) for xx in line]
       # remove any words that are now empty
       line = [xx for xx in line if xx != '']
       # stem words
       line = [self.p.stem(xx) for xx in line]
-      # add to the document's conents
-      return " ".join(line)
-
-
-
-    def getMovieDetails(self, movie):
-      
-      #If insufficient: Create bag of words and compare length
-      if not self.is_turbo:
-        for i in range(0, len(self.titles)):
-          if (self.titles[i][0].lower() == movie.lower()):
-            return (tuple(self.titles[i]),i)
-        return None
-      else:
-        #Only checks the name of the film (not the date)
-        getName = '(.*?)(?:\s\()'
-        for i in range(0, len(self.titles)):
-          #Spellcheck add here?
-          #If matches with a date
-          if self.titles[i][0].lower() == movie.lower():
-            return (tuple(self.titles[i]),i)
-          #Else extract name only
-          potential_title = re.findall(getName, self.titles[i][0])
-          if (potential_title):
-            if movie.lower() == potential_title[0].lower():
-             return (tuple(self.titles[i]),i)
-        return None
-
-
-
+      return line
     
-    def classifySentimet(self, withoutTitle):
-      #Remove the movie title from the response
+    ### Classifies the sentiment of an input string ###
+    ### TO-DO: Test upgraded sentiment classifier   ###
+    def classifySentiment(self, input):
+      stemmedInputArr = self.stem(input)
       countPos = 0
       countNeg = 0
       neg_state = False
-      for word in withoutTitle.split(' '):
-        #need to stem word
-        if any(punc in word for punc in self.punctation):
+      for word in stemmedInputArr:
+        if word in self.punctuation:
           neg_state = False
 
-        if any(neg in word for neg in self.negativeWords):
+        elif any(neg in word for neg in self.negationTokens):
           neg_state = not neg_state
 
-        if word in self.sentiment:
+        elif word in self.sentiment:
           if self.sentiment[word] == "pos":
             if neg_state:
               countNeg += 1
@@ -295,60 +316,48 @@ class Chatbot:
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
       self.sentiment = {self.p.stem(k):v for k,v in self.sentiment.iteritems()}
-      self.binarize()
+      self.binarize() # will be removed later
 
-
-
+    ### Binarize the ratings matrix ###
     def binarize(self):
-      ##***NEEDS TO BE FASTER
-      """Modifies the ratings matrix to make all of the ratings binary"""
-      for i in range(0, len(self.ratings)):
-        for j in range (0, len(self.ratings[i])):
-          if (self.ratings[i][j] >= 2.5):
-            self.ratings[i][j] = 1
-          elif (self.ratings[i][j] == 0):
-             self.ratings[i][j] = 0
-          else:
-            self.ratings[i][j] = -1
+      ratings = np.where(self.ratings > self.BINARY_THRESH, 1, np.where(self.ratings > 0, -1, 0))
 
-
-
-
-    def findSimilarity(self, movie, userMovie):
-      #Find the cosine similarity between the binarized rating vector for movie and for userMovie
-      userRating = np.array(self.ratings[userMovie[1]])
-      movieRating = np.array(self.ratings[movie[1]])
-      denom = (np.linalg.norm(userRating) * np.linalg.norm(movieRating))
-      if denom == 0: 
-        return 0
-      similarity = userRating.dot(movieRating) / denom
+    ### Returns the cosine similarity between the ratings vector at indices movieIdx1 and movieIdx2 ###
+    def findSimilarity(self, movieIdx1, movieIdx2):
+      ratingVector1 = np.array(self.ratings[movieIdx1])
+      ratingVector2 = np.array(self.ratings[movieIdx2])
+      denom = (np.linalg.norm(ratingVector1) * np.linalg.norm(ratingVector2))
+      similarity = 0 if denom == 0 else ratingVector1.dot(ratingVector2) / denom
       return similarity
 
-
-
-      
-
-    def recommend(self, u):
-      """Generates a list of movies based on the input vector u using
-      collaborative filtering"""
-
-      print "done binasing"
-      #Stores the rxi's
+    ### Generates a list of movies based on the movies in self.userMovies using collaborative filtering ###
+    def recommend(self):
       ratingSums = {}
-      for idx, movie in enumerate(self.titles):
-        movie = tuple(movie)
-        for userMovie in self.userMovies:
-          if userMovie[0] == movie:
-            continue
-          similarity = self.findSimilarity((movie, idx), userMovie)
-          rating = self.userMovies[userMovie]
-          ratingSums[movie] = ratingSums.get(movie,0) + (similarity * rating)
+      for titlesIdx, movieDetails in enumerate(self.titles):
+        title, _ = movieDetails # (title, genre)
+        if (titlesIdx, title) in self.userMovies: # Don't want to return movies they've already told us
+          continue
+        for userMovieDetails in self.userMovies:
+          userMovieIdx, userMovie = userMovieDetails # (index into self.titles, movie title)
+          similarity = self.findSimilarity(titlesIdx, userMovieIdx)
+          rating = self.userMovies[userMovieDetails]
+          ratingSums[title] = ratingSums.get(title,0) + (similarity * rating)
 
       values = np.array(ratingSums.values())
       keys = np.array(ratingSums.keys())
-      bestMovieIndices = np.argsort(values)
-      bestMovies = keys[bestMovieIndices][::-1][:10]
-      return bestMovies
+      bestMovieIndices = np.argsort(-values) # Sort in decreasing order
+      for idx in bestMovieIndices:
+        movie = keys[idx]
+        ### We do not want to return the same movie multiple times ###
+        if movie not in self.returnedMovies:
+          self.returnedMovies.add(movie)
+          return movie
+
+      ### We have already recommended every single movie (This should never happen) ###
+      bestMovie = keys[bestMovieIndices[0]]
+      ### Reset the set of returned movies ###
+      self.returnedMovies = {bestMovie}
+      return bestMovie
 
 
     #############################################################################
