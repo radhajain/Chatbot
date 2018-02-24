@@ -16,6 +16,7 @@
 import csv
 import math
 import re
+import string
 import numpy as np
 
 from movielens import ratings
@@ -41,9 +42,10 @@ class Chatbot:
       self.BINARY_THRESH = 2.5
 
       ### TOKEN SETS ###
-      self.eng_articles = {'The', 'A', 'An'}
+      self.engArticles = {'The', 'A', 'An'}
+      self.engArticlesLower = {'the', 'a', 'an'}
       self.negationTokens = {"nt", "not", "no", "never"}
-      self.punctuation = ".,!?;:"
+      self.punctuation = ".,!?"
       self.alphanum = re.compile('[^a-zA-Z0-9]')
 
       ### UTILS ###
@@ -52,7 +54,7 @@ class Chatbot:
       ### DATA ###
       self.read_data() # self.titles, self.ratings, self.sentiment
       self.userMovies = {}
-      self.userMovies = {(idx, movieDetails[0]):1 for idx, movieDetails in list(enumerate(self.titles))[:4]}
+      self.userMovies = {(idx, movieDetails[0]):1 for idx, movieDetails in list(enumerate(self.titles))[:4]} # will be removed, just for testing
       self.returnedMovies = set()
       
       ### RESPONSE SETS ###
@@ -61,7 +63,7 @@ class Chatbot:
                                 "I loved %s! Glad you enjoyed it too.",
                                 "I'm a huge fan of %s. I'm glad you liked it.",
                                 "Ooh %s is a good one.",
-                                "You're absolutely right! %s was a great movie!"
+                                "You're absolutely right! %s was a great movie!",
                                 "Right on! %s is definitely one of my favorites!!"]
 
       self.negativeResponses = ["I agree, %s was pretty bad.",
@@ -175,44 +177,195 @@ class Chatbot:
         if (not movieDetails):
           return "I'm sorry, I haven't seen that one yet! Please tell me about another movie."
 
-        ### The user has already given us this movie ###
-        if movieDetails in self.userMovies:
-          return 'You mentioned that one already. Please tell me another.'
-
-        ### Remove extraneous whitespace ###
-        withoutTitle = input.replace("\"" + userMovie + "\"", '').strip()
-      
-        ### Must include a sentiment, e.g. "I like..." ###
-        if not withoutTitle:
-          return 'How did you like "%s"?' % userMovie
-
-        ### Classify sentiment ###
-        sentiment = self.classifySentiment(withoutTitle)
-        if (not sentiment):
-          return 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".' % (userMovie, userMovie)
-
-        idx, movie = movieDetails
-        self.userMovies[movieDetails] = sentiment
-        if (sentiment > 0):
-          response = random.choice(self.positiveResponses) % userMovie
-        else:
-          response = random.choice(self.negativeResponses) % userMovie
-
-        ### We have collected a sufficient number of movies ###
-        if len(self.userMovies) >= self.NUM_MOVIES_MIN:
-          recommendation = self.recommend()
-          response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
-                      'I suggest you watch "%s".\n' % recommendation + \
-                      "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
-        else:
-          response += ' ' + random.choice(self.requestAnotherResponses)
-
-        return response  
+        return self.processMovieDetails(input, movieDetails, userMovie)
 
     ### Processes input for creative version ###
     def processCreative(self, input):
-      ### TO-DO ###
+      ### If we already have the minimum number of movies, give them another recommendation ###
+      if (len(self.userMovies) >= self.NUM_MOVIES_MIN):
+        recommendation = self.recommend()
+        response =  'I suggest you watch "%s".\n' % recommendation + \
+                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
+        return response
+
+      ### Try to extract movie title in quotation marks ###
+      getMoviesBasic = '\"(.*?)\"'
+      matches = re.findall(getMoviesBasic, input)
+      movieDetails = None
+
+      ### If user tries to give more than one movie ###
+      if len(matches) > 1:
+        return "Please tell me about one movie at a time. Go ahead."
+
+      elif (len(matches) == 1):
+        userMovie = matches[0]
+        movieDetails = self.getMovieDetailsStarter(userMovie)
+        return self.processMovieDetails(input, movieDetails, userMovie)
+
+      else:
+        ### Unable to extract movie title in quotation marks. ###
+        ### Try to extract movie title with alternative methods ###
+        if (not movieDetails):
+          potentialTitles = self.extractPotentialMovieTitles(input)
+          movieDetails = self.getMovieDetailsCreative(potentialTitles)
+
+        ### Still unable to extract movie title. Give up ###
+        if (not movieDetails):
+          return "Sorry, I don't understand. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
+
+        return self.processMovieDetails(input, movieDetails)
+
+      
+
+    def processMovieDetails(self, input, movieDetails, userMovie=None):
+      if (not userMovie):
+        userMovie = movieDetails[1]
+
+      ### The user has already given us this movie ###
+      if movieDetails in self.userMovies:
+        return 'You mentioned that one already. Please tell me another.'
+
+      ### Remove extraneous whitespace ###
+      withoutTitle = input.replace("\"" + userMovie + "\"", '').strip()
+    
+      ### Must include a sentiment, e.g. "I like..." ###
+      if not withoutTitle:
+        return 'How did you like "%s"?' % userMovie
+
+      ### Classify sentiment ###
+      sentiment = self.classifySentiment(withoutTitle)
+      if (not sentiment):
+        return 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".' % (userMovie, userMovie)
+
+      idx, movie = movieDetails
+      self.userMovies[movieDetails] = sentiment
+      if (sentiment > 0):
+        response = random.choice(self.positiveResponses) % userMovie
+      else:
+        response = random.choice(self.negativeResponses) % userMovie
+
+      ### We have collected a sufficient number of movies ###
+      if len(self.userMovies) >= self.NUM_MOVIES_MIN:
+        recommendation = self.recommend()
+        response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
+                    'I suggest you watch "%s".\n' % recommendation + \
+                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
+      else:
+        response += ' ' + random.choice(self.requestAnotherResponses)
+
       return response
+
+
+    ### Extracts potential movie titles. Assumes the first word of the title is capitalized ###
+    def extractPotentialMovieTitles(self, input):
+      punc_regex = '[' + self.punctuation + ']'
+      words = re.sub(punc_regex, lambda x: " " + x.group(0), input)
+      words = [xx.strip() for xx in words.split()]
+
+      cap_word_indices = []
+      punc_indices = []
+      title_state = False
+      cap_word_idx = None
+      ### Find the bounds of a capitalized set of words. Stops at punctuation ###
+      for i, w in enumerate(words):
+        if self.alphanum.sub('', w).istitle():
+          if not title_state:
+            title_state = True
+            cap_word_idx = i
+        elif title_state:
+          title_state = False
+          cap_word_indices.append((cap_word_idx, i))
+        if (w in self.punctuation):
+          punc_indices.append(i)
+      if (title_state):
+        cap_word_indices.append((cap_word_idx, len(words)))
+
+      title_state = False
+      cap_word_idx = None
+      cap_word_indices_with_punc = []
+      ## Same as above but allow for punctuation in between a set of capitalized words ###
+      for i, w in enumerate(words):
+        if self.alphanum.sub('', w).istitle():
+          if not title_state:
+            title_state = True
+            cap_word_idx = i
+        elif not w in self.punctuation and title_state:
+          title_state = False
+          cap_word_indices_with_punc.append((cap_word_idx, i))
+      if (title_state):
+        cap_word_indices_with_punc.append((cap_word_idx, len(words)))
+
+      ### Titles near the end of the input are more likey to be true titles, so we reverse ###
+      ### cap_word_indices i.e. 'I like The Lion King' will return the potential titles    ###
+      ### 'The Lion King' and 'I'                                                          ###
+      cap_word_indices.reverse()
+      cap_word_indices_with_punc.reverse()
+
+      potentialTitles = []
+      for cap_word_idx, _ in cap_word_indices:
+        next_punc_indices = [idx for idx in punc_indices if idx > cap_word_idx]
+        ### Assume the next punctuation mark after the capitalized word delimits the ###
+        ### movie title or that movie title goes until the end of the line e.g.      ###
+        ### 'I liked Snow White, but not very much' -> 'Snow White' or               ###
+        ### 'I loved The Lion King' -> 'The Lion King'                               ###
+        next_punc_idx = next_punc_indices[0] if next_punc_indices else len(words)
+        potentialTitles.append(' '.join(words[cap_word_idx:next_punc_idx]))
+      for cap_word_idx, cap_word_idx_f in cap_word_indices:
+        potentialTitles.append(' '.join(words[cap_word_idx:cap_word_idx_f]))
+      for cap_word_idx, cap_word_idx_f in cap_word_indices_with_punc:
+        potentialTitles.append(' '.join(words[cap_word_idx:cap_word_idx_f]))
+
+      for cap_word_idx, _ in cap_word_indices:
+        for j in xrange(len(words), cap_word_idx, -1):
+          joinedWords = ' '.join(words[cap_word_idx:j])
+          potentialTitles.append(joinedWords.translate(None, string.punctuation).strip())
+          potentialTitles.append(joinedWords.strip())
+
+      ### Remove duplicates, while maintaining the order ###
+      alreadySeen = set()
+      potentialTitlesFinal = []
+      for title in potentialTitles:
+        if (not title in alreadySeen):
+          alreadySeen.add(title)
+          potentialTitlesFinal.append(title)
+
+      print "Potential Titles: " + str(potentialTitlesFinal)
+
+      return potentialTitles
+
+
+    ### Tries to return movie details, assuming the movie title is one of ###
+    ### the entries in potentialMovieTitles                               ###
+    def getMovieDetailsCreative(self, potentialMovieTitles):
+      for movieTitle in potentialMovieTitles:
+        movieDetails = self.getMovieDetailsCreativeHelper(movieTitle)
+        if (movieDetails):
+          return movieDetails
+      return None
+
+    ### Identical to getMovieDetailsStarter, but doesn't require the date ###
+    ### to be entered and ignores case.                                   ###
+    def getMovieDetailsCreativeHelper(self, movie):
+      movie = movie.lower()
+      movieWordTokens = movie.split()
+      if (not movieWordTokens):
+        return None
+
+      if (re.search(r'\(\d{4}\)', movieWordTokens[-1])): # check if last word is a date
+        movieWordTokens = movieWordTokens[:-1]
+
+      if movieWordTokens[0] in self.engArticlesLower: # check not empty and first word is an article
+        movie = ' '.join(movieWordTokens[1:]) + ', ' + movieWordTokens[0]
+
+      movie = " ".join(movieWordTokens).strip()
+
+      for idx, movieDetails in enumerate(self.titles):
+        title, genre = movieDetails
+        titleWithoutDate = title[:-7].lower() # (1995) -> 6 characters + 1 space character
+        if titleWithoutDate == movie:
+          return idx, title
+
+      return None
 
     def checkForMovie(self, input):
         #Takes in e.g. "Ladybird" or "Ladybird (2017)"
@@ -242,7 +395,7 @@ class Chatbot:
     ### 'movie' must match the title in self.titles exactly.            ###
     def getMovieDetailsStarter(self, movie):
       movieWordTokens = movie.split()
-      if movieWordTokens and movieWordTokens[0] in self.eng_articles: # check not empty and first word is an article
+      if movieWordTokens and movieWordTokens[0] in self.engArticles: # check not empty and first word is an article
         ### Transforms movie title of the form 'An American in Paris (1951)' to 'American in Paris, An (1951)'
         movie = ' '.join(movieWordTokens[1:-1]) + ', ' + movieWordTokens[0] + ' ' + movieWordTokens[-1]
 
