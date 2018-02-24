@@ -127,12 +127,6 @@ class Chatbot:
         1) extract the relevant information and
         2) transform the information into a response to the user
       """
-      #############################################################################
-      # TODO: Implement the extraction and transformation in this method, possibly#
-      # calling other functions. Although modular code is not graded, it is       #
-      # highly recommended                                                        #
-      #############################################################################
-      
       if input == ":quit":
         return goodbye_message
 
@@ -148,6 +142,13 @@ class Chatbot:
       else:
         return self.processStarter(input)
         
+
+
+    #############################################################################
+    # STARTER MODE                        #
+    #############################################################################
+
+
     
     ### Processes input for starter version ###
     def processStarter(self, input):
@@ -179,6 +180,57 @@ class Chatbot:
 
         return self.processMovieDetails(input, movieDetails, userMovie)
 
+
+    #############################################################################
+    # BOTH            #
+    #############################################################################
+
+    # Makes a recommendation/asks for more movies from given movies
+    def processMovieDetails(self, input, movieDetails, userMovie=None):
+      if (not userMovie):
+        userMovie = movieDetails[1]
+
+      ### The user has already given us this movie ###
+      if movieDetails in self.userMovies:
+        return 'You mentioned that one already. Please tell me another.'
+
+      ### Remove extraneous whitespace ###
+      withoutTitle = input.replace("\"" + userMovie + "\"", '').strip()
+    
+      ### Must include a sentiment, e.g. "I like..." ###
+      if not withoutTitle:
+        return 'How did you like "%s"?' % userMovie
+
+      ### Classify sentiment ###
+      sentiment = self.classifySentiment(withoutTitle)
+      if (not sentiment):
+        # THIS WILL NEVER GET HERE
+        return 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".' % (userMovie, userMovie)
+
+      idx, movie = movieDetails
+      self.userMovies[movieDetails] = sentiment
+      if (sentiment > 0):
+        response = random.choice(self.positiveResponses) % userMovie
+      else:
+        response = random.choice(self.negativeResponses) % userMovie
+
+      ### We have collected a sufficient number of movies ###
+      if len(self.userMovies) >= self.NUM_MOVIES_MIN:
+        recommendation = self.recommend()
+        response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
+                    'I suggest you watch "%s".\n' % recommendation + \
+                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
+      else:
+        response += ' ' + random.choice(self.requestAnotherResponses)
+
+      return response
+
+
+    #############################################################################
+    # CREATIVE MODE             #
+    #############################################################################
+
+
     ### Processes input for creative version ###
     def processCreative(self, input):
       ### If we already have the minimum number of movies, give them another recommendation ###
@@ -193,7 +245,6 @@ class Chatbot:
       matches = re.findall(getMoviesBasic, input)
       movieDetails = None
       userMovie = None
-
 
       ### If user tries to give more than one movie ###
       if len(matches) > 1:
@@ -221,53 +272,57 @@ class Chatbot:
 
           return self.processMovieDetails(input, movieDetails)
 
-    # Check if all the movies are the same title, in which case ask for date
-    def allSame(self, currSeries):
-      first = currSeries[0][1]
-      for i in range(1, len(currSeries)):
-        if first != currSeries[i][1]:
-          return False
-      return True
 
 
+    ### Identical to getMovieDetailsStarter, but doesn't require the date ###
+    ### to be entered and ignores case.                                   ###
+    def getMovieDetailsCreativeHelper(self, movie):
+      movie = movie.lower()
+      movieWordTokens = movie.split()
+      if (not movieWordTokens):
+        return None
 
-    def processMovieDetails(self, input, movieDetails, userMovie=None):
-      if (not userMovie):
-        userMovie = movieDetails[1]
+      if (re.search(r'\(\d{4}\)', movieWordTokens[-1])): # check if last word is a date
+        movieWordTokens = movieWordTokens[:-1]
 
-      ### The user has already given us this movie ###
-      if movieDetails in self.userMovies:
-        return 'You mentioned that one already. Please tell me another.'
+      if movieWordTokens[0] in self.engArticlesLower: # check not empty and first word is an article e.g. American in Paris, An
+        movie = ' '.join(movieWordTokens[1:]) + ', ' + movieWordTokens[0]
 
-      ### Remove extraneous whitespace ###
-      withoutTitle = input.replace("\"" + userMovie + "\"", '').strip()
-    
-      ### Must include a sentiment, e.g. "I like..." ###
-      if not withoutTitle:
-        return 'How did you like "%s"?' % userMovie
+      movie = " ".join(movieWordTokens).strip()
 
-      ### Classify sentiment ###
-      sentiment = self.classifySentiment(withoutTitle)
-      if (not sentiment):
-        return 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".' % (userMovie, userMovie)
+      moviesInSeries = []
 
-      idx, movie = movieDetails
-      self.userMovies[movieDetails] = sentiment
-      if (sentiment > 0):
-        response = random.choice(self.positiveResponses) % userMovie
-      else:
-        response = random.choice(self.negativeResponses) % userMovie
+      for idx, movieDetails in enumerate(self.titles):
+        title, genre = movieDetails
+        titleWithoutDate = title[:-7].lower() # (1995) -> 6 characters + 1 space character
+        if titleWithoutDate == movie:
+          print idx, title
+          return idx, title
 
-      ### We have collected a sufficient number of movies ###
-      if len(self.userMovies) >= self.NUM_MOVIES_MIN:
-        recommendation = self.recommend()
-        response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
-                    'I suggest you watch "%s".\n' % recommendation + \
-                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
-      else:
-        response += ' ' + random.choice(self.requestAnotherResponses)
+        # TODO: Add a check to make sure that we don't accept words like "I" or whatever
+        elif titleWithoutDate.__contains__(movie) and len(movie) >= 4: #e.g. user enters Star Wars, check for "Star Wars I"
+          moviesInSeries.append((idx, titleWithoutDate))
 
-      return response
+      # If we have some sort of a series here, we should check that
+      if len(moviesInSeries) > 1:
+        potential_movie = self.checkForMovieInSeries(moviesInSeries, movie)
+        if potential_movie:
+          return potential_movie
+
+      return None
+
+
+    ### EXTENSION 1: EXTRACTING MOVIE NAME ###
+    ##########################################
+
+    ### Tries to return movie details, assuming the movie title is one of ###
+    ### the entries in potentialMovieTitles                               ###
+    def getMovieDetailsCreative(self, potentialMovieTitles):
+      for movieTitle in potentialMovieTitles:
+        movieDetails = self.getMovieDetailsCreativeHelper(movieTitle)
+        if (movieDetails):
+          return movieDetails
+      return None
 
 
     ### Extracts potential movie titles. Assumes the first word of the title is capitalized ###
@@ -348,17 +403,19 @@ class Chatbot:
       return potentialTitles
 
 
-    ### Tries to return movie details, assuming the movie title is one of ###
-    ### the entries in potentialMovieTitles                               ###
-    def getMovieDetailsCreative(self, potentialMovieTitles):
-      for movieTitle in potentialMovieTitles:
-        movieDetails = self.getMovieDetailsCreativeHelper(movieTitle)
-        if (movieDetails):
-          return movieDetails
-      return None
+    ### EXTENSION 2: FILTERING MOVIES OF SAME NAME ###
+    ##################################################
+
+    # Check if all the movies are the same title, in which case ask for date
+    def allSame(self, currSeries):
+      first = currSeries[0][1]
+      for i in range(1, len(currSeries)):
+        if first != currSeries[i][1]:
+          return False
+      return True
 
 
-    ##Check if the movie is in a series
+    ##Check if the movie is in a series. Takes in a list of potential movies and returns the filtered movie
     def checkForMovieInSeries(self, moviesInSeries, userMovie):
       if self.allSame(moviesInSeries):
           date = raw_input("We have multiple films by the name of " + userMovie + ". What year was yours released? (e.g 1945)")
@@ -380,69 +437,9 @@ class Chatbot:
           return self.getMovieDetailsCreativeHelper(moviesInSeries[0][1])
 
 
-          #TODO: check for either an integer or a title
            
-
-    ### Identical to getMovieDetailsStarter, but doesn't require the date ###
-    ### to be entered and ignores case.                                   ###
-    def getMovieDetailsCreativeHelper(self, movie):
-      movie = movie.lower()
-      movieWordTokens = movie.split()
-      if (not movieWordTokens):
-        return None
-
-      if (re.search(r'\(\d{4}\)', movieWordTokens[-1])): # check if last word is a date
-        movieWordTokens = movieWordTokens[:-1]
-
-      if movieWordTokens[0] in self.engArticlesLower: # check not empty and first word is an article e.g. American in Paris, An
-        movie = ' '.join(movieWordTokens[1:]) + ', ' + movieWordTokens[0]
-
-      movie = " ".join(movieWordTokens).strip()
-
-      moviesInSeries = []
-
-      for idx, movieDetails in enumerate(self.titles):
-        title, genre = movieDetails
-        titleWithoutDate = title[:-7].lower() # (1995) -> 6 characters + 1 space character
-        if titleWithoutDate == movie:
-          print idx, title
-          return idx, title
-
-        # TODO: Add a check to make sure that we don't accept words like "I" or whatever
-        elif titleWithoutDate.__contains__(movie) and len(movie) >= 4: #e.g. user enters Star Wars, check for "Star Wars I"
-          moviesInSeries.append((idx, titleWithoutDate))
-
-      # If we have some sort of a series here, we should check that
-      if len(moviesInSeries) > 1:
-        potential_movie = self.checkForMovieInSeries(moviesInSeries, movie)
-        if potential_movie:
-          return potential_movie
-
-      return None
-
-    def checkForMovie(self, input):
-        #Takes in e.g. "Ladybird" or "Ladybird (2017)"
-        #Checks database for Ladybird or Ladybird (2017)
-        getMovies = '\"(.*?)\"'
-        matches = re.findall(getMovies, input)
-        if (not matches):
-          words = input.split(' ')
-          capitalized_word_idx = None
-          for i, w in enumerate(words):
-            #Ignore if the first letter is capitalized
-            if (w.istitle()) and i > 0:
-              capitalized_word_idx = i 
-              break
-          for i in range(capitalized_word_idx + 1, len(words) + 1):
-            potential_title = " ".join(words[capitalized_word_idx:i])
-            movieTitle = self.getMovieDetails(potential_title)
-            if movieTitle:
-              return movieTitle
-        else:
-          potential_title = matches[0]
-          movieTitle = self.getMovieDetails(potential_title)
-          if movieTitle:
-            return movieTitle
+    ### EXTENSION 3: HANDLING MISPELLINGS ###
+    ##################################################
 
 
     ### If the standard check fails we check to see if the spelling may have been incorrect, ###
@@ -455,6 +452,84 @@ class Chatbot:
         if title == movie:
           return idx, title
       return None
+
+
+
+
+
+  def deleteEdits(self, word):
+    """Returns a list of edits of 1-delete distance words and rules used to generate them."""
+    if len(word) <= 0:
+      return []
+
+    word = "<" + word #Append start character
+    ret = []
+    for i in xrange(1, len(word)):
+      #The corrupted signal are this character and the character preceding
+      corruptLetters = word[i-1:i+1] 
+      #The correct signal is just the preceding character
+      correctLetters = corruptLetters[:-1]
+
+      #The corrected word deletes character i (and lacks the start symbol)
+      correction = "%s%s" % (word[1:i], word[i+1:])
+      ret.append(Edit(correction, corruptLetters, correctLetters))
+      
+    return ret
+
+
+
+  def insertEdits(self, word):
+    """Returns a list of edits of 1-insert distance words and rules used to generate them."""
+     # If inserting the letter 'a' as the second character in the word 'test', the corrupt
+    #  signal is 't' and the correct signal is 'ta'. See slide 17 of the noisy channel model.
+    word = "<" + word # append start token
+    ret = []
+    for i in xrange(1, len(word)+1):
+      corruptLetters = word[i-1:i]
+      for alpha in EditModel.ALPHABET:
+        correctLetters = corruptLetters + alpha
+        correction = "%s%s%s" % (word[1:i-1], correctLetters.replace("<",""), word[i:])
+        ret.append(Edit(correction, corruptLetters, correctLetters))
+
+    
+    return ret
+
+
+
+  def transposeEdits(self, word):
+    """Returns a list of edits of 1-transpose distance words and rules used to generate them."""
+    #  If tranposing letters 'te' in the word 'test', the corrupt signal is 'te'
+    #  and the correct signal is 'et'. See slide 17 of the noisy channel model.
+    if len(word) <= 0:
+      return []
+    ret = []
+    for i in xrange(1, len(word)):
+      corruptLetters = word[i-1:i+1]
+      correctLetters = corruptLetters[::-1]
+      correction = "%s%s%s" % (word[0:i-1], correctLetters, word[i+1:])
+      ret.append(Edit(correction, corruptLetters, correctLetters))
+
+    return ret
+
+
+
+  def replaceEdits(self, word):
+    """Returns a list of edits of 1-replace distance words and rules used to generate them."""
+    # If replacing the letter 'e' with 'q' in the word 'test', the corrupt signal is 'e'
+    # and the correct signal is 'q'. See slide 17 of the noisy channel model.
+    if len(word) <= 0:
+      return []
+    
+    word = "<" + word # append start token
+    ret = []
+    for i in xrange(1, len(word)):
+      corruptLetters = word[i]
+      for alpha in EditModel.ALPHABET:
+        correctLetters = alpha
+        correction = "%s%s%s" % (word[1:i], correctLetters, word[i+1:])
+        ret.append(Edit(correction, corruptLetters, correctLetters))
+    return ret
+
 
 
     ### Returns the idx into self.titles and the movie title of 'movie' ###
@@ -617,6 +692,13 @@ class Chatbot:
 
     def bot_name(self):
       return self.name
+
+
+
+
+
+
+
 
 
 if __name__ == '__main__':
