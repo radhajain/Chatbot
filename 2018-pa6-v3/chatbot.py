@@ -223,9 +223,9 @@ class Chatbot:
 
     # Check if all the movies are the same title, in which case ask for date
     def allSame(self, currSeries):
-      first = currSeries[0]
+      first = currSeries[0][1]
       for i in range(1, len(currSeries)):
-        if first != currSeries(i):
+        if first != currSeries[i][1]:
           return False
       return True
 
@@ -364,9 +364,24 @@ class Chatbot:
           date = raw_input("We have multiple films by the name of " + userMovie + ". What year was yours released? (e.g 1945)")
           return self.getMovieDetailsStarter(userMovie + "(" + date + ")")
       else:
-          movie = raw_input("Which " + userMovie + " did you mean?")
+          failedLastTime = False
+          while (len(moviesInSeries) > 1): #Whilst the movies found
+            second_part = "These are the movies I know that match " + userMovie + ":\n " + moviesInSeries + "\nWhich " + userMovie + " did you mean?\n"
+            if failedLastTime: #The user entered something that didn't filter movies found
+              second_part = "Sorry, we don't have any films that match " + userMovie + " and " + specific_thing + ". Please try again. " + second_part
+            specific_thing = raw_input(second_part) #Filter word
+            newMoviesInSeries = [m for m in moviesInSeries if specific_thing in m[1]]
+            if (len(newMoviesInSeries) > 0): #Filtered list
+              failedLastTime = False
+              moviesInSeries = newMoviesInSeries
+            else:
+              failedLastTime = True
+
+          return self.getMovieDetailsCreativeHelper(moviesInSeries[0][1])
+
+
           #TODO: check for either an integer or a title
-          
+           
 
     ### Identical to getMovieDetailsStarter, but doesn't require the date ###
     ### to be entered and ignores case.                                   ###
@@ -379,7 +394,7 @@ class Chatbot:
       if (re.search(r'\(\d{4}\)', movieWordTokens[-1])): # check if last word is a date
         movieWordTokens = movieWordTokens[:-1]
 
-      if movieWordTokens[0] in self.engArticlesLower: # check not empty and first word is an article
+      if movieWordTokens[0] in self.engArticlesLower: # check not empty and first word is an article e.g. American in Paris, An
         movie = ' '.join(movieWordTokens[1:]) + ', ' + movieWordTokens[0]
 
       movie = " ".join(movieWordTokens).strip()
@@ -390,11 +405,12 @@ class Chatbot:
         title, genre = movieDetails
         titleWithoutDate = title[:-7].lower() # (1995) -> 6 characters + 1 space character
         if titleWithoutDate == movie:
+          print idx, title
           return idx, title
 
         # TODO: Add a check to make sure that we don't accept words like "I" or whatever
-        elif titleWithoutDate.__contains__(movie) and len(movie) >= 4:
-          moviesInSeries.append(titleWithoutDate)
+        elif titleWithoutDate.__contains__(movie) and len(movie) >= 4: #e.g. user enters Star Wars, check for "Star Wars I"
+          moviesInSeries.append((idx, titleWithoutDate))
 
       # If we have some sort of a series here, we should check that
       if len(moviesInSeries) > 1:
