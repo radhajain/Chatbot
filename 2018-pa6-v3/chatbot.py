@@ -192,30 +192,44 @@ class Chatbot:
       getMoviesBasic = '\"(.*?)\"'
       matches = re.findall(getMoviesBasic, input)
       movieDetails = None
+      userMovie = None
+
 
       ### If user tries to give more than one movie ###
       if len(matches) > 1:
         return "Please tell me about one movie at a time. Go ahead."
 
-      elif (len(matches) == 1):
+      if (len(matches) == 1):
         userMovie = matches[0]
         movieDetails = self.getMovieDetailsStarter(userMovie)
-        return self.processMovieDetails(input, movieDetails, userMovie)
+        ## If our basic search doesn't work, check for misspelling
+        if not movieDetails:
+          movieDetails = self.checkMispellingMovie(userMovie)
 
+      # If we have been unsuccessful check the potential splits of the sentence
+      if movieDetails:
+          return self.processMovieDetails(input, movieDetails, userMovie)
       else:
         ### Unable to extract movie title in quotation marks. ###
         ### Try to extract movie title with alternative methods ###
-        if (not movieDetails):
           potentialTitles = self.extractPotentialMovieTitles(input)
           movieDetails = self.getMovieDetailsCreative(potentialTitles)
 
         ### Still unable to extract movie title. Give up ###
-        if (not movieDetails):
-          return "Sorry, I don't understand. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
+          if (not movieDetails):
+            return "Sorry, I don't understand. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
 
-        return self.processMovieDetails(input, movieDetails)
+          return self.processMovieDetails(input, movieDetails)
 
-      
+    # Check if all the movies are the same title, in which case ask for date
+    def allSame(self, currSeries):
+      first = currSeries[0]
+      for i in range(1, len(currSeries)):
+        if first != currSeries(i):
+          return False
+      return True
+
+
 
     def processMovieDetails(self, input, movieDetails, userMovie=None):
       if (not userMovie):
@@ -343,6 +357,17 @@ class Chatbot:
           return movieDetails
       return None
 
+
+    ##Check if the movie is in a series
+    def checkForMovieInSeries(self, moviesInSeries, userMovie):
+      if self.allSame(moviesInSeries):
+          date = raw_input("We have multiple films by the name of " + userMovie + ". What year was yours released? (e.g 1945)")
+          return self.getMovieDetailsStarter(userMovie + "(" + date + ")")
+      else:
+          movie = raw_input("Which " + userMovie + " did you mean?")
+          #TODO: check for either an integer or a title
+          
+
     ### Identical to getMovieDetailsStarter, but doesn't require the date ###
     ### to be entered and ignores case.                                   ###
     def getMovieDetailsCreativeHelper(self, movie):
@@ -359,11 +384,23 @@ class Chatbot:
 
       movie = " ".join(movieWordTokens).strip()
 
+      moviesInSeries = []
+
       for idx, movieDetails in enumerate(self.titles):
         title, genre = movieDetails
         titleWithoutDate = title[:-7].lower() # (1995) -> 6 characters + 1 space character
         if titleWithoutDate == movie:
           return idx, title
+
+        # TODO: Add a check to make sure that we don't accept words like "I" or whatever
+        elif titleWithoutDate.__contains__(movie) and len(movie) >= 4:
+          moviesInSeries.append(titleWithoutDate)
+
+      # If we have some sort of a series here, we should check that
+      if len(moviesInSeries) > 1:
+        potential_movie = self.checkForMovieInSeries(moviesInSeries, movie)
+        if potential_movie:
+          return potential_movie
 
       return None
 
@@ -391,20 +428,38 @@ class Chatbot:
           if movieTitle:
             return movieTitle
 
+
+    ### If the standard check fails we check to see if the spelling may have been incorrect, ###
+    ### and then return this as an option, or None if there are no convincing options. ###
+    # TODO: I just need to read the slides on min edit distance, need to use some DP here I think
+    def checkMispellingMovie(self, movie):
+      movie = self.checkReorder(movie)
+      for idx, movieDetails in enumerate(self.titles):
+        title, genre = movieDetails
+        if title == movie:
+          return idx, title
+      return None
+
+
     ### Returns the idx into self.titles and the movie title of 'movie' ###
     ### 'movie' must match the title in self.titles exactly.            ###
     def getMovieDetailsStarter(self, movie):
-      movieWordTokens = movie.split()
-      if movieWordTokens and movieWordTokens[0] in self.engArticles: # check not empty and first word is an article
-        ### Transforms movie title of the form 'An American in Paris (1951)' to 'American in Paris, An (1951)'
-        movie = ' '.join(movieWordTokens[1:-1]) + ', ' + movieWordTokens[0] + ' ' + movieWordTokens[-1]
-
+      movie = self.checkReorder(movie)
       for idx, movieDetails in enumerate(self.titles):
         title, genre = movieDetails
         if title == movie:
           return idx, title
 
       return None
+
+    ## Check to see if the movie title needs to be re-ordered
+    def checkReorder(self, movie):
+      movieWordTokens = movie.split()
+      if movieWordTokens and movieWordTokens[0] in self.engArticles: # check not empty and first word is an article
+        ### Transforms movie title of the form 'An American in Paris (1951)' to 'American in Paris, An (1951)'
+        movie = ' '.join(movieWordTokens[1:-1]) + ', ' + movieWordTokens[0] + ' ' + movieWordTokens[-1]
+      return movie
+
 
     ### Returns an array of stemmed words ###
     def stem(self, line):
