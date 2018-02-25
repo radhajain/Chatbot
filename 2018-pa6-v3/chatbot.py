@@ -40,6 +40,7 @@ class Chatbot:
       ### CONSTANTS ###
       self.NUM_MOVIES_MIN = 5
       self.BINARY_THRESH = 2.5
+      self.maxEditDist = 1
 
       ### TOKEN SETS ###
       self.engArticles = {'The', 'A', 'An'}
@@ -47,6 +48,7 @@ class Chatbot:
       self.negationTokens = {"nt", "not", "no", "never"}
       self.punctuation = ".,!?"
       self.alphanum = re.compile('[^a-zA-Z0-9]')
+      self.ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
 
       ### UTILS ###
       self.p = PorterStemmer()
@@ -250,14 +252,15 @@ class Chatbot:
       if len(matches) > 1:
         return "Please tell me about one movie at a time. Go ahead."
 
-      if (len(matches) == 1):
+      if (len(matches) == 1): #User gave movie "in quotes"
         userMovie = matches[0]
         movieDetails = self.getMovieDetailsStarter(userMovie)
-        ## If our basic search doesn't work, check for misspelling
-        if not movieDetails:
-          movieDetails = self.checkMispellingMovie(userMovie)
+        ## If our basic search doesn't work, check for "misspelling"
+        if not movieDetails: 
+          potentialTitles = self.checkMispellingMovie([userMovie])
+          movieDetails = self.getMovieDetailsCreative(potentialTitles)
 
-      # If we have been unsuccessful check the potential splits of the sentence
+      #We've found the correct movie 
       if movieDetails:
           return self.processMovieDetails(input, movieDetails, userMovie)
       else:
@@ -266,12 +269,26 @@ class Chatbot:
           potentialTitles = self.extractPotentialMovieTitles(input)
           movieDetails = self.getMovieDetailsCreative(potentialTitles)
 
+          #If couldn't find the correct movie from Capitalization
+          if not movieDetails:
+            potentialTitles = self.checkMispellingMovie(potentialTitles)
+            movieDetails = self.getMovieDetailsCreative(potentialTitles)
+
         ### Still unable to extract movie title. Give up ###
           if (not movieDetails):
             return "Sorry, I don't understand. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
 
           return self.processMovieDetails(input, movieDetails)
 
+
+    ### Tries to return movie details, assuming the movie title is one of ###
+    ### the entries in potentialMovieTitles                               ###
+    def getMovieDetailsCreative(self, potentialMovieTitles):
+      for movieTitle in potentialMovieTitles:
+        movieDetails = self.getMovieDetailsCreativeHelper(movieTitle)
+        if (movieDetails):
+          return movieDetails
+      return None
 
 
     ### Identical to getMovieDetailsStarter, but doesn't require the date ###
@@ -292,11 +309,11 @@ class Chatbot:
 
       moviesInSeries = []
 
+
       for idx, movieDetails in enumerate(self.titles):
         title, genre = movieDetails
         titleWithoutDate = title[:-7].lower() # (1995) -> 6 characters + 1 space character
         if titleWithoutDate == movie:
-          print idx, title
           return idx, title
 
         # TODO: Add a check to make sure that we don't accept words like "I" or whatever
@@ -314,16 +331,6 @@ class Chatbot:
 
     ### EXTENSION 1: EXTRACTING MOVIE NAME ###
     ##########################################
-
-    ### Tries to return movie details, assuming the movie title is one of ###
-    ### the entries in potentialMovieTitles                               ###
-    def getMovieDetailsCreative(self, potentialMovieTitles):
-      for movieTitle in potentialMovieTitles:
-        movieDetails = self.getMovieDetailsCreativeHelper(movieTitle)
-        if (movieDetails):
-          return movieDetails
-      return None
-
 
     ### Extracts potential movie titles. Assumes the first word of the title is capitalized ###
     def extractPotentialMovieTitles(self, input):
@@ -398,7 +405,7 @@ class Chatbot:
           alreadySeen.add(title)
           potentialTitlesFinal.append(title)
 
-      print "Potential Titles: " + str(potentialTitlesFinal)
+      # print "Potential Titles: " + str(potentialTitlesFinal)
 
       return potentialTitles
 
@@ -423,7 +430,7 @@ class Chatbot:
       else:
           failedLastTime = False
           while (len(moviesInSeries) > 1): #Whilst the movies found
-            second_part = "These are the movies I know that match " + userMovie + ":\n " + moviesInSeries + "\nWhich " + userMovie + " did you mean?\n"
+            second_part = "These are the movies I know that match " + userMovie + ": " + str([m[1] for m in moviesInSeries]) + "\nWhich " + userMovie + " did you mean?\n"
             if failedLastTime: #The user entered something that didn't filter movies found
               second_part = "Sorry, we don't have any films that match " + userMovie + " and " + specific_thing + ". Please try again. " + second_part
             specific_thing = raw_input(second_part) #Filter word
@@ -443,92 +450,88 @@ class Chatbot:
 
 
     ### If the standard check fails we check to see if the spelling may have been incorrect, ###
-    ### and then return this as an option, or None if there are no convincing options. ###
-    # TODO: I just need to read the slides on min edit distance, need to use some DP here I think
-    def checkMispellingMovie(self, movie):
-      movie = self.checkReorder(movie)
-      for idx, movieDetails in enumerate(self.titles):
-        title, genre = movieDetails
-        if title == movie:
-          return idx, title
-      return None
+    ### Take in an array of potential titles and then return a list of potential spelling corrections, 
+    ### or None if there are no convincing options. ###
+    ## PotentialTitles = ["ion king", "ty story"]
+    def checkMispellingMovie(self, potentialTitles):
+      potentialCorrectedAtI = [potentialTitles]
+      for i in range(self.maxEditDist):   
+        editDistAtI = []  
+        for mispelledName in potentialCorrectedAtI[i]:
+          oneEditDist = []
+          oneEditDist += self.deleteEdits(mispelledName)
+          oneEditDist += self.insertEdits(mispelledName)
+          oneEditDist += self.transposeEdits(mispelledName)
+          oneEditDist += self.replaceEdits(mispelledName)
+           ##['lion king', 'aion king'..., 'toy story', 'tay story'.... 2nd edit dists]
+          editDistAtI += oneEditDist
+        potentialCorrectedAtI.append(editDistAtI)
+      potentialCorrected = []
+      for p in potentialCorrectedAtI:
+        potentialCorrected += p
+      print "Number of Edit distances: %d" % len(potentialCorrected)
+      return potentialCorrected
 
 
 
 
 
-  def deleteEdits(self, word):
-    """Returns a list of edits of 1-delete distance words and rules used to generate them."""
-    if len(word) <= 0:
-      return []
+    def deleteEdits(self, word):
+      """Returns a list of edits of 1-delete distance words and rules used to generate them."""
+      if len(word) == 0:
+        return []
+      ret = []
+      for i in xrange(0, len(word)):
+        #The corrected word deletes character i (and lacks the start symbol)
+        correction = "%s%s" % (word[:i], word[i+1:])
+        ret.append(correction)
+      return ret
 
-    word = "<" + word #Append start character
-    ret = []
-    for i in xrange(1, len(word)):
-      #The corrupted signal are this character and the character preceding
-      corruptLetters = word[i-1:i+1] 
-      #The correct signal is just the preceding character
-      correctLetters = corruptLetters[:-1]
 
-      #The corrected word deletes character i (and lacks the start symbol)
-      correction = "%s%s" % (word[1:i], word[i+1:])
-      ret.append(Edit(correction, corruptLetters, correctLetters))
+
+    def insertEdits(self, word):
+      """Returns a list of edits of 1-insert distance words and rules used to generate them."""
+       # If inserting the letter 'a' as the second character in the word 'test', the corrupt
+      #  signal is 't' and the correct signal is 'ta'. See slide 17 of the noisy channel model.
+      ret = []
+      for i in xrange(0, len(word) + 1):
+        for alpha in self.ALPHABET:
+          correction = "%s%s%s" % (word[:i], alpha, word[i:])
+          ret.append(correction)
+      return ret
+
+
+
+    def transposeEdits(self, word):
+      """Returns a list of edits of 1-transpose distance words and rules used to generate them."""
+      #  If tranposing letters 'te' in the word 'test', the corrupt signal is 'te'
+      #  and the correct signal is 'et'. See slide 17 of the noisy channel model.
+      if len(word) == 0:
+        return []
+      ret = []
+      for i in xrange(1, len(word)):
+        corruptLetters = word[i-1:i+1]
+        correctLetters = corruptLetters[::-1]
+        correction = "%s%s%s" % (word[0:i-1], correctLetters, word[i+1:])
+        ret.append(correction)
+
+      return ret
+
+
+
+    def replaceEdits(self, word):
+      """Returns a list of edits of 1-replace distance words and rules used to generate them."""
+      # If replacing the letter 'e' with 'q' in the word 'test', the corrupt signal is 'e'
+      # and the correct signal is 'q'. See slide 17 of the noisy channel model.
+      if len(word) == 0:
+        return []
       
-    return ret
-
-
-
-  def insertEdits(self, word):
-    """Returns a list of edits of 1-insert distance words and rules used to generate them."""
-     # If inserting the letter 'a' as the second character in the word 'test', the corrupt
-    #  signal is 't' and the correct signal is 'ta'. See slide 17 of the noisy channel model.
-    word = "<" + word # append start token
-    ret = []
-    for i in xrange(1, len(word)+1):
-      corruptLetters = word[i-1:i]
-      for alpha in EditModel.ALPHABET:
-        correctLetters = corruptLetters + alpha
-        correction = "%s%s%s" % (word[1:i-1], correctLetters.replace("<",""), word[i:])
-        ret.append(Edit(correction, corruptLetters, correctLetters))
-
-    
-    return ret
-
-
-
-  def transposeEdits(self, word):
-    """Returns a list of edits of 1-transpose distance words and rules used to generate them."""
-    #  If tranposing letters 'te' in the word 'test', the corrupt signal is 'te'
-    #  and the correct signal is 'et'. See slide 17 of the noisy channel model.
-    if len(word) <= 0:
-      return []
-    ret = []
-    for i in xrange(1, len(word)):
-      corruptLetters = word[i-1:i+1]
-      correctLetters = corruptLetters[::-1]
-      correction = "%s%s%s" % (word[0:i-1], correctLetters, word[i+1:])
-      ret.append(Edit(correction, corruptLetters, correctLetters))
-
-    return ret
-
-
-
-  def replaceEdits(self, word):
-    """Returns a list of edits of 1-replace distance words and rules used to generate them."""
-    # If replacing the letter 'e' with 'q' in the word 'test', the corrupt signal is 'e'
-    # and the correct signal is 'q'. See slide 17 of the noisy channel model.
-    if len(word) <= 0:
-      return []
-    
-    word = "<" + word # append start token
-    ret = []
-    for i in xrange(1, len(word)):
-      corruptLetters = word[i]
-      for alpha in EditModel.ALPHABET:
-        correctLetters = alpha
-        correction = "%s%s%s" % (word[1:i], correctLetters, word[i+1:])
-        ret.append(Edit(correction, corruptLetters, correctLetters))
-    return ret
+      ret = []
+      for i in xrange(0, len(word)):
+        for alpha in self.ALPHABET:
+          correction = "%s%s%s" % (word[:i], alpha, word[i+1:])
+          ret.append(correction)
+      return ret
 
 
 
@@ -615,11 +618,38 @@ class Chatbot:
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
       self.sentiment = {self.p.stem(k):v for k,v in self.sentiment.iteritems()}
-      self.binarize() # will be removed later
+      if (self.is_turbo):
+        # self.pearsonize()
+        self.binarize() 
+      else:
+        self.binarize() 
+
 
     ### Binarize the ratings matrix ###
     def binarize(self):
-      ratings = np.where(self.ratings > self.BINARY_THRESH, 1, np.where(self.ratings > 0, -1, 0))
+      self.ratings = np.where(self.ratings > self.BINARY_THRESH, 1, np.where(self.ratings > 0, -1, 0))
+
+
+    def pearsonize(self):
+      userSum = np.array()
+      userNumMovies = np.array()
+      for user in len(self.ratings[0]):
+        userSum[user] = 0
+        userNumMovies[user] = 0
+        for movie in len(self.ratings):
+          if self.ratings[movie][user]:
+            # userSum = self.ratings.sum(axis = 0)
+            userSum[user] += self.ratings[movie][user]
+            userNumMovies += 1
+
+      userMeans = userSum/userNumMovies
+      self.ratings = self.ratings/userMeans
+
+
+
+
+
+
 
     ### Returns the cosine similarity between the ratings vector at indices movieIdx1 and movieIdx2 ###
     def findSimilarity(self, movieIdx1, movieIdx2):
@@ -640,6 +670,7 @@ class Chatbot:
           userMovieIdx, userMovie = userMovieDetails # (index into self.titles, movie title)
           similarity = self.findSimilarity(titlesIdx, userMovieIdx)
           rating = self.userMovies[userMovieDetails]
+          #Do Pearson one here
           ratingSums[title] = ratingSums.get(title,0) + (similarity * rating)
 
       values = np.array(ratingSums.values())
