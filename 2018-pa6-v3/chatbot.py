@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# PA6, CS124, Stanford, Winter 2018
+# PA6, Cw124, Stanford, Winter 2018
 # v.1.0.2
 # Original Python code by Ignacio Cases (@cases)
 
@@ -40,7 +40,8 @@ class Chatbot:
       ### CONSTANTS ###
       self.NUM_MOVIES_MIN = 5
       self.BINARY_THRESH = 2.5
-      self.maxEditDist = 1
+      self.MAX_EDIT_DIST = 2
+      self.DATE_REGEX = r'\(?(?P<date>\d{4})\)?'
 
       ### TOKEN SETS ###
       self.engArticles = {'The', 'A', 'An'}
@@ -83,7 +84,18 @@ class Chatbot:
                                       "Tell me about another movie!",
                                       "Any other movies?",
                                       "Are there any other movies you remember?"]
-      
+
+      self.canYouAnswers = ["I most certainly can %s, but I'm a bit busy at the moment.",
+                            "As much as I would like to %s right now, I'm just too excited about movies!",
+                            'Can you %s?']
+
+      self.whatIsAnswers = ["I'm unsure what %s is, but you're smart! I'm sure you can figure it out!",
+                            "Once upon a time, a wise man from a forgotten realm spoke to me... In his infinite wisdom " + \
+                            "he told me precisely what %s is. But, alas, I forgot..."]
+
+      self.catchAllAnswers = ["Hm, that's not really what I want to talk about right now.",
+                              'Ok, got it.',
+                              'Hmm, interesting']
       
 
     #############################################################################
@@ -118,17 +130,12 @@ class Chatbot:
 
       return goodbye_message
 
-
     #############################################################################
     # 2. Modules 2 and 3: extraction and transformation                         #
     #############################################################################
 
     def process(self, input):
-      """Takes the input string from the REPL and call delegated functions
-      that
-        1) extract the relevant information and
-        2) transform the information into a response to the user
-      """
+      input = input.strip()
       if input == ":quit":
         return goodbye_message
 
@@ -144,22 +151,12 @@ class Chatbot:
       else:
         return self.processStarter(input)
         
-
-
     #############################################################################
-    # STARTER MODE                        #
+    # STARTER MODE                                                              #
     #############################################################################
 
-
-    
     ### Processes input for starter version ###
     def processStarter(self, input):
-      ### If we already have the minimum number of movies, give them another recommendation ###
-      if (len(self.userMovies) >= self.NUM_MOVIES_MIN):
-        recommendation = self.recommend()
-        response =  'I suggest you watch "%s".\n' % recommendation + \
-                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
-        return response
 
       getMovies = '\"(.*?)\"'
       matches = re.findall(getMovies, input)
@@ -180,17 +177,54 @@ class Chatbot:
         if (not movieDetails):
           return "I'm sorry, I haven't seen that one yet! Please tell me about another movie."
 
-        return self.processMovieDetails(input, movieDetails, userMovie)
-
+        return self.processMovieDetails(input, movieDetails)
 
     #############################################################################
-    # BOTH            #
+    # CREATIVE MODE                                                             #
     #############################################################################
 
-    # Makes a recommendation/asks for more movies from given movies
-    def processMovieDetails(self, input, movieDetails, userMovie=None):
-      if (not userMovie):
-        userMovie = movieDetails[1]
+    ### Processes input for creative version ###
+    def processCreative(self, input):
+
+      ### Try to extract movie title in quotation marks ###
+      getMoviesBasic = '\"(.*?)\"'
+      matches = re.findall(getMoviesBasic, input)
+      movieDetails = None
+      userMovie = None
+
+      ### If user tries to give more than one movie ###
+      if len(matches) > 1:
+        return "Please tell me about one movie at a time. Go ahead."
+
+      if (len(matches) == 1): #User gave movie "in quotes"
+        userMovie = matches[0]
+        movieDetails = self.getMovieDetailsStarter(userMovie)
+        ### If our basic search doesn't work ###
+        if not movieDetails: 
+          movieDetails = self.getMovieDetailsCreative([userMovie])
+
+      ### We've found the correct movie ###
+      if movieDetails:
+        return self.processMovieDetails(input, movieDetails)
+      else:
+        ### Unable to extract movie title in quotation marks. ###
+        ### Try to extract movie title with alternative methods ###
+        potentialTitles = self.extractPotentialMovieTitles(input)
+        movieDetails = self.getMovieDetailsCreative(potentialTitles)
+
+        ### Still unable to extract movie title. User must be talking about something arbitrary ###
+        if (not movieDetails):
+          return self.checkArbitraryInput(input) + "\nNow let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
+
+        return self.processMovieDetails(input, movieDetails)
+
+    #############################################################################
+    # BOTH                                                                      #
+    #############################################################################
+
+    ### Makes a recommendation/asks for more movies ###
+    def processMovieDetails(self, input, movieDetails):
+      userMovie = movieDetails[1]
 
       ### The user has already given us this movie ###
       if movieDetails in self.userMovies:
@@ -206,7 +240,6 @@ class Chatbot:
       ### Classify sentiment ###
       sentiment = self.classifySentiment(withoutTitle)
       if (not sentiment):
-        # THIS WILL NEVER GET HERE
         return 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".' % (userMovie, userMovie)
 
       idx, movie = movieDetails
@@ -221,65 +254,36 @@ class Chatbot:
         recommendation = self.recommend()
         response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
                     'I suggest you watch "%s".\n' % recommendation + \
-                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
+                    "Would you like to hear another recommendation? (Or enter :quit if you're done)\n"
+
+        if self.is_turbo:
+          ### Allow the user to ask for more recommendations ###
+          response = raw_input(response).strip()
+          while (self.getYesOrNo(response)):
+            recommendation = self.recommend()
+            response = raw_input('I suggest you watch "%s".\n' % recommendation + \
+                      "Would you like to hear another recommendation? (Or enter :quit if you're done)\n").strip()
+          return self.processCreative(response)
+
       else:
         response += ' ' + random.choice(self.requestAnotherResponses)
 
       return response
 
-
     #############################################################################
-    # CREATIVE MODE             #
+    # GET MOVIE DETAILS                                                          #
     #############################################################################
 
+    ### Returns the idx into self.titles and the movie title of 'movie' ###
+    ### 'movie' must match the title in self.titles exactly.            ###
+    def getMovieDetailsStarter(self, movie):
+      movie = self.checkReorder(movie)
+      for idx, movieDetails in enumerate(self.titles):
+        title, genre = movieDetails
+        if title == movie:
+          return idx, title
 
-    ### Processes input for creative version ###
-    def processCreative(self, input):
-      ### If we already have the minimum number of movies, give them another recommendation ###
-      if (len(self.userMovies) >= self.NUM_MOVIES_MIN):
-        recommendation = self.recommend()
-        response =  'I suggest you watch "%s".\n' % recommendation + \
-                    "Would you like to hear another recommendation? (Or enter :quit if you're done.)"
-        return response
-
-      ### Try to extract movie title in quotation marks ###
-      getMoviesBasic = '\"(.*?)\"'
-      matches = re.findall(getMoviesBasic, input)
-      movieDetails = None
-      userMovie = None
-
-      ### If user tries to give more than one movie ###
-      if len(matches) > 1:
-        return "Please tell me about one movie at a time. Go ahead."
-
-      if (len(matches) == 1): #User gave movie "in quotes"
-        userMovie = matches[0]
-        movieDetails = self.getMovieDetailsStarter(userMovie)
-        ## If our basic search doesn't work, check for "misspelling"
-        if not movieDetails: 
-          potentialTitles = self.checkMispellingMovie([userMovie])
-          movieDetails = self.getMovieDetailsCreative(potentialTitles)
-
-      #We've found the correct movie 
-      if movieDetails:
-          return self.processMovieDetails(input, movieDetails, userMovie)
-      else:
-        ### Unable to extract movie title in quotation marks. ###
-        ### Try to extract movie title with alternative methods ###
-          potentialTitles = self.extractPotentialMovieTitles(input)
-          movieDetails = self.getMovieDetailsCreative(potentialTitles)
-
-          #If couldn't find the correct movie from Capitalization
-          if not movieDetails:
-            potentialTitles = self.checkMispellingMovie(potentialTitles)
-            movieDetails = self.getMovieDetailsCreative(potentialTitles)
-
-        ### Still unable to extract movie title. Give up ###
-          if (not movieDetails):
-            return "Sorry, I don't understand. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
-
-          return self.processMovieDetails(input, movieDetails)
-
+      return None
 
     ### Tries to return movie details, assuming the movie title is one of ###
     ### the entries in potentialMovieTitles                               ###
@@ -290,10 +294,10 @@ class Chatbot:
           return movieDetails
       return None
 
-
     ### Identical to getMovieDetailsStarter, but doesn't require the date ###
     ### to be entered and ignores case.                                   ###
     def getMovieDetailsCreativeHelper(self, movie):
+      origMovie = movie
       movie = movie.lower()
       movieWordTokens = movie.split()
       if (not movieWordTokens):
@@ -308,29 +312,52 @@ class Chatbot:
       movie = " ".join(movieWordTokens).strip()
 
       moviesInSeries = []
-
-
       for idx, movieDetails in enumerate(self.titles):
         title, genre = movieDetails
-        titleWithoutDate = title[:-7].lower() # (1995) -> 6 characters + 1 space character
-        if titleWithoutDate == movie:
-          return idx, title
+        titleWithoutDate = title[:-7] # (1995) -> 6 characters + 1 space character
 
-        # TODO: Add a check to make sure that we don't accept words like "I" or whatever
-        elif titleWithoutDate.__contains__(movie) and len(movie) >= 4: #e.g. user enters Star Wars, check for "Star Wars I"
-          moviesInSeries.append((idx, titleWithoutDate))
+        if self.isMatch(titleWithoutDate, movie):
+          moviesInSeries.append((idx, title)) # Append the title WITH date to help user disambiguate
 
-      # If we have some sort of a series here, we should check that
+      if len(moviesInSeries) == 1:
+        return moviesInSeries[0]
+
+      # Check for potential series
       if len(moviesInSeries) > 1:
-        potential_movie = self.checkForMovieInSeries(moviesInSeries, movie)
-        if potential_movie:
-          return potential_movie
+        return self.extractMovieInSeries(moviesInSeries, origMovie) # Returns (idx, title) or None
 
       return None
 
+    ## Check to see if the movie title needs to be re-ordered
+    def checkReorder(self, movie):
+      movieWordTokens = movie.split()
+      if movieWordTokens and movieWordTokens[0] in self.engArticles: # check not empty and first word is an article
+        ### Transforms movie title of the form 'An American in Paris (1951)' to 'American in Paris, An (1951)'
+        movie = ' '.join(movieWordTokens[1:-1]) + ', ' + movieWordTokens[0] + ' ' + movieWordTokens[-1]
+      return movie
 
-    ### EXTENSION 1: EXTRACTING MOVIE NAME ###
-    ##########################################
+    ### EXTENSION: Responding to arbitrary input ###
+    ################################################
+
+    ### Responds to input of the form 'Can you ...?' or 'What is ...?' ###
+    def checkArbitraryInput(self, input):
+
+      if input.lower().startswith("can you"):
+        input = input[len("can you"):]
+        return random.choice(self.canYouAnswers) % self.trimInput(input)
+
+      if input.lower().startswith("what is"):
+        input = input[len("what is"):]
+        return random.choice(self.whatIsAnswers) % self.trimInput(input)
+
+      return random.choice(self.catchAllAnswers)
+
+    def trimInput(self, input):
+      input = input.translate(None, string.punctuation) # remove punctuation
+      return " ".join(input.split()) # remove extraneous whitespace
+
+    ### EXTENSION 1: Identifying movies without quotation marks or perfect capitalization ###
+    #########################################################################################
 
     ### Extracts potential movie titles. Assumes the first word of the title is capitalized ###
     def extractPotentialMovieTitles(self, input):
@@ -397,165 +424,13 @@ class Chatbot:
           potentialTitles.append(joinedWords.translate(None, string.punctuation).strip())
           potentialTitles.append(joinedWords.strip())
 
-      ### Remove duplicates, while maintaining the order ###
-      alreadySeen = set()
-      potentialTitlesFinal = []
-      for title in potentialTitles:
-        if (not title in alreadySeen):
-          alreadySeen.add(title)
-          potentialTitlesFinal.append(title)
-
-      # print "Potential Titles: " + str(potentialTitlesFinal)
+      potentialTitles = list(set(potentialTitles)) 
+      potentialTitles = sorted(potentialTitles, key=len, reverse=True)
 
       return potentialTitles
 
-
-    ### EXTENSION 2: FILTERING MOVIES OF SAME NAME ###
-    ##################################################
-
-    # Check if all the movies are the same title, in which case ask for date
-    def allSame(self, currSeries):
-      first = currSeries[0][1]
-      for i in range(1, len(currSeries)):
-        if first != currSeries[i][1]:
-          return False
-      return True
-
-
-    ##Check if the movie is in a series. Takes in a list of potential movies and returns the filtered movie
-    def checkForMovieInSeries(self, moviesInSeries, userMovie):
-      if self.allSame(moviesInSeries):
-          date = raw_input("We have multiple films by the name of " + userMovie + ". What year was yours released? (e.g 1945)")
-          return self.getMovieDetailsStarter(userMovie + "(" + date + ")")
-      else:
-          failedLastTime = False
-          while (len(moviesInSeries) > 1): #Whilst the movies found
-            second_part = "These are the movies I know that match " + userMovie + ": " + str([m[1] for m in moviesInSeries]) + "\nWhich " + userMovie + " did you mean?\n"
-            if failedLastTime: #The user entered something that didn't filter movies found
-              second_part = "Sorry, we don't have any films that match " + userMovie + " and " + specific_thing + ". Please try again. " + second_part
-            specific_thing = raw_input(second_part) #Filter word
-            newMoviesInSeries = [m for m in moviesInSeries if specific_thing in m[1]]
-            if (len(newMoviesInSeries) > 0): #Filtered list
-              failedLastTime = False
-              moviesInSeries = newMoviesInSeries
-            else:
-              failedLastTime = True
-
-          return self.getMovieDetailsCreativeHelper(moviesInSeries[0][1])
-
-
-           
-    ### EXTENSION 3: HANDLING MISPELLINGS ###
-    ##################################################
-
-
-    ### If the standard check fails we check to see if the spelling may have been incorrect, ###
-    ### Take in an array of potential titles and then return a list of potential spelling corrections, 
-    ### or None if there are no convincing options. ###
-    ## PotentialTitles = ["ion king", "ty story"]
-    def checkMispellingMovie(self, potentialTitles):
-      potentialCorrectedAtI = [potentialTitles]
-      for i in range(self.maxEditDist):   
-        editDistAtI = []  
-        for mispelledName in potentialCorrectedAtI[i]:
-          oneEditDist = []
-          oneEditDist += self.deleteEdits(mispelledName)
-          oneEditDist += self.insertEdits(mispelledName)
-          oneEditDist += self.transposeEdits(mispelledName)
-          oneEditDist += self.replaceEdits(mispelledName)
-           ##['lion king', 'aion king'..., 'toy story', 'tay story'.... 2nd edit dists]
-          editDistAtI += oneEditDist
-        potentialCorrectedAtI.append(editDistAtI)
-      potentialCorrected = []
-      for p in potentialCorrectedAtI:
-        potentialCorrected += p
-      print "Number of Edit distances: %d" % len(potentialCorrected)
-      return potentialCorrected
-
-
-
-
-
-    def deleteEdits(self, word):
-      """Returns a list of edits of 1-delete distance words and rules used to generate them."""
-      if len(word) == 0:
-        return []
-      ret = []
-      for i in xrange(0, len(word)):
-        #The corrected word deletes character i (and lacks the start symbol)
-        correction = "%s%s" % (word[:i], word[i+1:])
-        ret.append(correction)
-      return ret
-
-
-
-    def insertEdits(self, word):
-      """Returns a list of edits of 1-insert distance words and rules used to generate them."""
-       # If inserting the letter 'a' as the second character in the word 'test', the corrupt
-      #  signal is 't' and the correct signal is 'ta'. See slide 17 of the noisy channel model.
-      ret = []
-      for i in xrange(0, len(word) + 1):
-        for alpha in self.ALPHABET:
-          correction = "%s%s%s" % (word[:i], alpha, word[i:])
-          ret.append(correction)
-      return ret
-
-
-
-    def transposeEdits(self, word):
-      """Returns a list of edits of 1-transpose distance words and rules used to generate them."""
-      #  If tranposing letters 'te' in the word 'test', the corrupt signal is 'te'
-      #  and the correct signal is 'et'. See slide 17 of the noisy channel model.
-      if len(word) == 0:
-        return []
-      ret = []
-      for i in xrange(1, len(word)):
-        corruptLetters = word[i-1:i+1]
-        correctLetters = corruptLetters[::-1]
-        correction = "%s%s%s" % (word[0:i-1], correctLetters, word[i+1:])
-        ret.append(correction)
-
-      return ret
-
-
-
-    def replaceEdits(self, word):
-      """Returns a list of edits of 1-replace distance words and rules used to generate them."""
-      # If replacing the letter 'e' with 'q' in the word 'test', the corrupt signal is 'e'
-      # and the correct signal is 'q'. See slide 17 of the noisy channel model.
-      if len(word) == 0:
-        return []
-      
-      ret = []
-      for i in xrange(0, len(word)):
-        for alpha in self.ALPHABET:
-          correction = "%s%s%s" % (word[:i], alpha, word[i+1:])
-          ret.append(correction)
-      return ret
-
-
-
-    ### Returns the idx into self.titles and the movie title of 'movie' ###
-    ### 'movie' must match the title in self.titles exactly.            ###
-    def getMovieDetailsStarter(self, movie):
-      movie = self.checkReorder(movie)
-      for idx, movieDetails in enumerate(self.titles):
-        title, genre = movieDetails
-        if title == movie:
-          return idx, title
-
-      return None
-
-    ## Check to see if the movie title needs to be re-ordered
-    def checkReorder(self, movie):
-      movieWordTokens = movie.split()
-      if movieWordTokens and movieWordTokens[0] in self.engArticles: # check not empty and first word is an article
-        ### Transforms movie title of the form 'An American in Paris (1951)' to 'American in Paris, An (1951)'
-        movie = ' '.join(movieWordTokens[1:-1]) + ', ' + movieWordTokens[0] + ' ' + movieWordTokens[-1]
-      return movie
-
-
-    ### Returns an array of stemmed words ###
+        ### Returns an array of stemmed words ###
+        
     def stem(self, line):
       # make sure everything is lower case
       line = line.lower()
@@ -571,7 +446,136 @@ class Chatbot:
       # stem words
       line = [self.p.stem(xx) for xx in line]
       return line
+
+    ### EXTENSION 2: Disambiguating movie titles for series and year ambiguities ###
+    ##############################################################################
+
+    # Check if all the movies are the same title, in which case ask for date
+    def allSame(self, currSeries):
+      first = currSeries[0][1][:-7] # currSeries is an aray of (idx, title) tuples
+      for i in range(1, len(currSeries)):
+        if first != currSeries[i][1][:-7]:
+          return False
+      return True
+
+    ### Extract a single movie is in a series. Takes in a list of potential movies and returns the filtered movie ###
+    def extractMovieInSeries(self, moviesInSeries, userMovie):
+      if self.allSame(moviesInSeries):
+        movieYears = [title[-5:-1] for idx, title in moviesInSeries]
+        date = raw_input("We have multiple films matching %s released in years:\n%s. What year was yours released? (e.g %s)\n" % (userMovie, str(movieYears), movieYears[0])).strip()
+        dateIdx = self.extractDate(date, movieYears)
+        return moviesInSeries[dateIdx]
+      
+      else:
+        failedLastTime = False
+        filter_phrase = None
+        while (len(moviesInSeries) > 1):
+          request_string = ('\n' if not failedLastTime else '') + "These are the movies I know that match %s" % userMovie + \
+                            (" and %s" % filter_phrase if filter_phrase else '') + \
+                            ":\n%s\nWhich %s did you mean? (Or enter 'None' if you were not referring to any of the preceding movies)\n" % (str([m[1] for m in moviesInSeries]), userMovie)
+          if failedLastTime: # The user entered something that didn't match any of the movies
+            request_string = "\nSorry, we don't have any films that match %s and %s. Please try again.\n" % (userMovie, filter_phrase) + request_string
+
+          filter_phrase = re.sub(r'\W+', '', raw_input(request_string).lower().strip())
+          if (filter_phrase == 'none'): # The user was not referring to any of the movies in moviesInSeries
+            return None
+
+          newMoviesInSeries = [m for m in moviesInSeries if filter_phrase in m[1].lower()]
+          if (len(newMoviesInSeries) > 0):
+            failedLastTime = False
+            moviesInSeries = newMoviesInSeries
+          else: # filter_phrase doesn't match any of the potential movies
+            failedLastTime = True 
+
+        return moviesInSeries[0]
+
+    ### Extracts a valid date (date in movieYears) from the user and returns the index ###
+    ### of that date in the movieYears array                                           ###
+    def extractDate(self, date, movieYears):
+      match = re.match(self.DATE_REGEX, date)
+      while (not match or not match.group("date") in movieYears):
+        date = raw_input("Please enter a valid date (e.g. %s)" % movieYears[0]).strip()
+      return movieYears.index(date)
+           
+    ### EXTENSION 3: HANDLING MISPELLINGS ###
+    ##################################################
+
+    ### Checks for misspelling and series matches ###
+    def isMatch(self, titleWithoutDate, movie):
+      origTitle = titleWithoutDate
+      titleWithoutDate = titleWithoutDate.lower()
+
+      if movie == titleWithoutDate:
+        return True
+
+      if len(movie) <= 4:
+        return False
+
+      ### movie can be a maximum of self.MAX_EDIT_DIST away from titleWithoutDate to still be considered a match ###
+      if not self.editDistanceExceeds(titleWithoutDate, movie, self.MAX_EDIT_DIST):
+        response = raw_input("Did you mean %s? (Enter yes if this suggestion is correct)\n" % origTitle).strip()
+        if self.getYesOrNo(response):
+          return True
+
+      # movie is a prefix of titleWithoutDate and len(movie) >= 4 to prevent superfluous matches like 'I' -> 'Ice Age'
+      if not titleWithoutDate.startswith(movie):
+        return False
+
+      return True
+
+    ### Returns True if the edit distance between w1 and w2 exceeds maxEditDist ###
+    def editDistanceExceeds(self, w1, w2, maxEditDist):
+      if abs(len(w2) - len(w1)) > maxEditDist:
+        return True
+      if (self.levenshtein(w1.lower(), w2.lower()) > maxEditDist):
+        return True
+      return False
+
+    ### Computes the levenshtein distance between source and target ###
+    def levenshtein(self, source, target):
+      if len(source) < len(target):
+        return self.levenshtein(target, source)
+
+      # So now we have len(source) >= len(target).
+      if len(target) == 0:
+        return len(source)
+
+      # We call tuple() to force strings to be used as sequences
+      # ('c', 'a', 't', 's') - numpy uses them as values by default.
+      source = np.array(tuple(source))
+      target = np.array(tuple(target))
+
+      # We use a dynamic programming algorithm, but with the
+      # added optimization that we only need the last two rows
+      # of the matrix.
+      previous_row = np.arange(target.size + 1)
+      for s in source:
+        # Insertion (target grows longer than source):
+        current_row = previous_row + 1
+
+        # Substitution or matching:
+        # Target and source items are aligned, and either
+        # are different (cost of 1), or are the same (cost of 0).
+        current_row[1:] = np.minimum(
+          current_row[1:],
+          np.add(previous_row[:-1], target != s))
+
+        # Deletion (target grows shorter than source):
+        current_row[1:] = np.minimum(
+          current_row[1:],
+          current_row[0:-1] + 1)
+
+        previous_row = current_row
+
+      return previous_row[-1]
+
+    def getYesOrNo(self, input):
+      return input.lower().startswith('y')
     
+    #############################################################################
+    # SENTIMENT CLASSIFICATION                                                  #
+    #############################################################################
+
     ### Classifies the sentiment of an input string ###
     ### TO-DO: Test upgraded sentiment classifier   ###
     def classifySentiment(self, input):
@@ -598,96 +602,124 @@ class Chatbot:
             else:
               countNeg += 1
 
-
-      bestClass = 1 if countPos >= countNeg else -1
-      return bestClass
-
-
+      if countPos > countNeg:
+        return 1
+      if countNeg > countPos:
+        return -1
+      return 0
 
     #############################################################################
     # 3. Movie Recommendation helper functions                                  #
     #############################################################################
 
-
+    ##############################################################################
+    # DATA PROCESSING                                                            #
+    ##############################################################################
     def read_data(self):
       """Reads the ratings matrix from file"""
       # This matrix has the following shape: num_movies x num_users
       # The values stored in each row i and column j is the rating for
       # movie i by user j
       self.titles, self.ratings = ratings()
+      self.ratings = np.array(self.ratings)
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
       self.sentiment = {self.p.stem(k):v for k,v in self.sentiment.iteritems()}
-      if (self.is_turbo):
-        # self.pearsonize()
-        self.binarize() 
-      else:
-        self.binarize() 
-
+      self.pearsonize()
+      self.binarize() 
 
     ### Binarize the ratings matrix ###
     def binarize(self):
-      self.ratings = np.where(self.ratings > self.BINARY_THRESH, 1, np.where(self.ratings > 0, -1, 0))
+      self.ratingsBinary = np.where(self.ratings > self.BINARY_THRESH, 1, np.where(self.ratings > 0, -1, 0))
 
-
+    ### Mean-center the ratings matrix ###
     def pearsonize(self):
-      userSum = np.array()
-      userNumMovies = np.array()
-      for user in len(self.ratings[0]):
-        userSum[user] = 0
-        userNumMovies[user] = 0
-        for movie in len(self.ratings):
-          if self.ratings[movie][user]:
-            # userSum = self.ratings.sum(axis = 0)
-            userSum[user] += self.ratings[movie][user]
-            userNumMovies += 1
+      non_zero = np.count_nonzero(self.ratings, axis=1)
+      mean = self.ratings.sum(axis=1)[:, None] / np.where(non_zero > 0, non_zero, 1)[:, None]
+      self.ratingsMeanCentered = self.ratings - np.where(self.ratings > 0, mean, 0)
 
-      userMeans = userSum/userNumMovies
-      self.ratings = self.ratings/userMeans
-
-
-
-
-
-
-
-    ### Returns the cosine similarity between the ratings vector at indices movieIdx1 and movieIdx2 ###
-    def findSimilarity(self, movieIdx1, movieIdx2):
-      ratingVector1 = np.array(self.ratings[movieIdx1])
-      ratingVector2 = np.array(self.ratings[movieIdx2])
-      denom = (np.linalg.norm(ratingVector1) * np.linalg.norm(ratingVector2))
-      similarity = 0 if denom == 0 else ratingVector1.dot(ratingVector2) / denom
-      return similarity
-
+    ##############################################################################
+    # RECOMMENDATION ENGINE                                                      #
+    ##############################################################################
+    
     ### Generates a list of movies based on the movies in self.userMovies using collaborative filtering ###
     def recommend(self):
-      ratingSums = {}
+      if (self.is_turbo):
+        simScores = self.pearsonCollabFiltering()
+      else:
+        simScores = self.binaryCollabFiltering()
+      bestMovieIndices = np.argsort(-simScores) # Sort in decreasing order
+      for idx in bestMovieIndices:
+        title, _ = self.titles[idx] # (title, genre)
+        ### We do not want to return the same movie multiple times ###
+        if title not in self.returnedMovies:
+          self.returnedMovies.add(title)
+          return self.processMovieTitle(title)
+
+      ### We have already recommended every single movie (This should never happen) ###
+      bestMovie = self.titles[bestMovieIndices[0]][0]
+      ### Reset the set of returned movies ###
+      self.returnedMovies = {bestMovie}
+      return self.processMovieTitle(bestMovie)
+
+    ### EXTENSION 4: Using non-binarized dataset ###
+    ##############################################
+
+    ### Returns a numpy array of similarity scores 'movieRatings' where the similarity score at index i ###
+    ### corresponds to the movie at self.titles[i]                                                      ###
+    def pearsonCollabFiltering(self):
+      userMovieRatings = np.array([rating for _, rating in self.userMovies.items()]) # numpy array of user movie ratings i.e. [1, 0, 1] (ratings are not required to be binary)
+      userMovieIndices = np.array([movieDetails[0] for movieDetails, _ in self.userMovies.items()]) # numpy array of indices into self.titles corresponding to userMovieRatings
+      movieRatings = np.zeros((len(self.titles),))
+      for titlesIdx, movieDetails in enumerate(self.titles):
+        title, _ = movieDetails # (title, genre)
+        if (titlesIdx, title) in self.userMovies: # Don't want to return movies they've already told us
+          continue
+
+        similarities = np.zeros((len(self.userMovies),)) # array of similarity values between movie i and the user movies
+        for i, userMovieIdx in enumerate(userMovieIndices):
+          sim = self.cosineSimilarity(self.ratingsMeanCentered[titlesIdx], self.ratingsMeanCentered[userMovieIdx])
+          if (sim > 0): # only keep the similarity values > 0
+            similarities[i] = sim
+
+        movieRatings[titlesIdx] = np.sum(similarities * userMovieRatings)
+
+      if (movieRatings.max() <= 0): # If we predict the user won't like the best movie in our list, use binary collaberative filtering instead
+        return binaryCollabFiltering()
+      else:
+        return movieRatings
+
+    ### Returns a numpy array of similarity scores 'ratingSums' where the similarity score at index i ###
+    ### corresponds to the movie at self.titles[i]                                                    ###
+    def binaryCollabFiltering(self):
+      ### Use an array instead of a dict for speed/efficiency ###
+      ratingSums = np.zeros((len(self.titles),)) # array of ratingSums where ratingSums[i] corresponds to the ratingSum for the movie at self.titles[i]
       for titlesIdx, movieDetails in enumerate(self.titles):
         title, _ = movieDetails # (title, genre)
         if (titlesIdx, title) in self.userMovies: # Don't want to return movies they've already told us
           continue
         for userMovieDetails in self.userMovies:
           userMovieIdx, userMovie = userMovieDetails # (index into self.titles, movie title)
-          similarity = self.findSimilarity(titlesIdx, userMovieIdx)
+          similarity = self.cosineSimilarity(self.ratingsBinary[titlesIdx], self.ratingsBinary[userMovieIdx])
           rating = self.userMovies[userMovieDetails]
-          #Do Pearson one here
-          ratingSums[title] = ratingSums.get(title,0) + (similarity * rating)
+          ratingSums[titlesIdx] += (similarity * rating)
+      return ratingSums
 
-      values = np.array(ratingSums.values())
-      keys = np.array(ratingSums.keys())
-      bestMovieIndices = np.argsort(-values) # Sort in decreasing order
-      for idx in bestMovieIndices:
-        movie = keys[idx]
-        ### We do not want to return the same movie multiple times ###
-        if movie not in self.returnedMovies:
-          self.returnedMovies.add(movie)
-          return movie
+    ### Returns the cosine similarity between the two vectors ###
+    def cosineSimilarity(self, vec1, vec2):
+      denom = (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+      similarity = 0 if denom == 0 else vec1.dot(vec2) / denom
+      return similarity
 
-      ### We have already recommended every single movie (This should never happen) ###
-      bestMovie = keys[bestMovieIndices[0]]
-      ### Reset the set of returned movies ###
-      self.returnedMovies = {bestMovie}
-      return bestMovie
+    ### Converts movie titles of the form 'Lion King, The (1994)' to 'The Lion King (1994).' ###
+    ### Movie titles not of this form are left alone. Assumes the year is the title suffix.  ###
+    def processMovieTitle(self, title):
+      titleTokens = title.split()
+      if len(titleTokens) >= 3 and titleTokens[-2].lower() in self.engArticlesLower and titleTokens[-3].endswith(','):
+        titleTokens[-3] = titleTokens[-3][:-1] # remove comma
+        title = ' '.join([titleTokens[-2]] + titleTokens[:-2] + [titleTokens[-1]])
+ 
+      return title
 
 
     #############################################################################
@@ -723,13 +755,6 @@ class Chatbot:
 
     def bot_name(self):
       return self.name
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':
