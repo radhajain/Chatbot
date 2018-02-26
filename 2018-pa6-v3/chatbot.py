@@ -59,6 +59,7 @@ class Chatbot:
       self.userMovies = {}
       self.userMovies = {(idx, movieDetails[0]):1 for idx, movieDetails in list(enumerate(self.titles))[:4]} # will be removed, just for testing
       self.returnedMovies = set()
+      self.guessedWrong = False
       
       ### RESPONSE SETS ###
       self.positiveResponses = ["You liked %s. Me too!",
@@ -191,6 +192,7 @@ class Chatbot:
       matches = re.findall(getMoviesBasic, input)
       movieDetails = None
       userMovie = None
+      self.guessedWrong = False
 
       ### If user tries to give more than one movie ###
       if len(matches) > 1:
@@ -214,7 +216,10 @@ class Chatbot:
 
         ### Still unable to extract movie title. User must be talking about something arbitrary ###
         if (not movieDetails):
-          return self.checkArbitraryInput(input) + "\nNow let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
+          if not self.guessedWrong:
+            return self.checkArbitraryInput(input) + "\nNow let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
+          else:
+            return "Sorry I couldn't understand that last movie title you gave me!\nLet's try again, tell me about a movie you have seen e.g. 'I liked Toy Story'"
 
         return self.processMovieDetails(input, movieDetails)
 
@@ -224,7 +229,7 @@ class Chatbot:
 
     ### Makes a recommendation/asks for more movies ###
     def processMovieDetails(self, input, movieDetails):
-      userMovie = movieDetails[1]
+      userMovie = self.processMovieTitle(movieDetails[1])
 
       ### The user has already given us this movie ###
       if movieDetails in self.userMovies:
@@ -240,7 +245,9 @@ class Chatbot:
       ### Classify sentiment ###
       sentiment = self.classifySentiment(withoutTitle)
       if (not sentiment):
-        return 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".' % (userMovie, userMovie)
+        response = raw_input('I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s".\n>' % (userMovie, userMovie))
+        while not sentiment:
+          sentiment = self.classifySentiment(response)
 
       idx, movie = movieDetails
       self.userMovies[movieDetails] = sentiment
@@ -252,17 +259,25 @@ class Chatbot:
       ### We have collected a sufficient number of movies ###
       if len(self.userMovies) >= self.NUM_MOVIES_MIN:
         recommendation = self.recommend()
+        ### Additional prompt for recommending a movie ###
         response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
-                    'I suggest you watch "%s".\n' % recommendation + \
-                    "Would you like to hear another recommendation? (Or enter :quit if you're done)\n"
+                    "I suggest you watch " + recommendation + ".\n" + \
+                    "Would you like to hear another recommendation? (Or enter :quit if you're done)"
 
-        if self.is_turbo:
-          ### Allow the user to ask for more recommendations ###
-          response = raw_input(response).strip()
+        ### If we are in normal mode, append the reccomendation prompt and return ###
+        if not self.is_turbo:
+          return response
+
+        else:
+          ### Print the response for the last movie and enter the recommendation loop ###
+          print response
+          response = raw_input("> ")
+
           while (self.getYesOrNo(response)):
             recommendation = self.recommend()
-            response = raw_input('I suggest you watch "%s".\n' % recommendation + \
-                      "Would you like to hear another recommendation? (Or enter :quit if you're done)\n").strip()
+            prompt = "I suggest you watch " + recommendation + ".\n" + \
+                      "Would you like to hear another reccomendation? (Or enter :quit if you're done)\n> "
+            response = raw_input(prompt)
           return self.processCreative(response)
 
       else:
@@ -314,6 +329,7 @@ class Chatbot:
       moviesInSeries = []
       for idx, movieDetails in enumerate(self.titles):
         title, genre = movieDetails
+        title = self.processMovieTitle(title)
         titleWithoutDate = title[:-7] # (1995) -> 6 characters + 1 space character
 
         if self.isMatch(titleWithoutDate, movie):
@@ -470,18 +486,25 @@ class Chatbot:
         failedLastTime = False
         filter_phrase = None
         while (len(moviesInSeries) > 1):
-          request_string = ('\n' if not failedLastTime else '') + "These are the movies I know that match %s" % userMovie + \
-                            (" and %s" % filter_phrase if filter_phrase else '') + \
-                            ":\n%s\nWhich %s did you mean? (Or enter 'None' if you were not referring to any of the preceding movies)\n" % (str([m[1] for m in moviesInSeries]), userMovie)
-          if failedLastTime: # The user entered something that didn't match any of the movies
-            request_string = "\nSorry, we don't have any films that match %s and %s. Please try again.\n" % (userMovie, filter_phrase) + request_string
+          if failedLastTime:
+            request_string = "\nSorry, none of these films match %s and %s. Please try again.\n> " % (userMovie, filter_phrase)
 
-          filter_phrase = re.sub(r'\W+', '', raw_input(request_string).lower().strip())
+          else:
+            print('\n' if not failedLastTime else '') + "These are the movies I know that match %s" % userMovie + \
+                            (" and %s" % filter_phrase if filter_phrase else '')
+
+            for i in range(len(moviesInSeries)):
+              print str(i) + ".) " + str(moviesInSeries[i][1])
+
+            request_string = "If the movie you were searching for is present in the above list, please enter either its date, a more " + \
+                              "descriptive version of the title, or enter 'None' if your movie is not there\n> "
+
+          filter_phrase = raw_input(request_string).lower()
           if (filter_phrase == 'none'): # The user was not referring to any of the movies in moviesInSeries
             return None
 
           newMoviesInSeries = [m for m in moviesInSeries if filter_phrase in m[1].lower()]
-          if (len(newMoviesInSeries) > 0):
+          if len(newMoviesInSeries) > 0:
             failedLastTime = False
             moviesInSeries = newMoviesInSeries
           else: # filter_phrase doesn't match any of the potential movies
@@ -511,11 +534,17 @@ class Chatbot:
       if len(movie) <= 4:
         return False
 
+      ### Avoids the bug where we ask for all the Toy Story's and then list them out anyway ###
+      if titleWithoutDate.startswith(movie):
+        return True
+
       ### movie can be a maximum of self.MAX_EDIT_DIST away from titleWithoutDate to still be considered a match ###
       if not self.editDistanceExceeds(titleWithoutDate, movie, self.MAX_EDIT_DIST):
-        response = raw_input("Did you mean %s? (Enter yes if this suggestion is correct)\n" % origTitle).strip()
+        response = raw_input("Did you mean %s? (Enter yes if this suggestion is correct)\n> " % origTitle).strip()
         if self.getYesOrNo(response):
           return True
+        else:
+          self.guessedWrong = True
 
       # movie is a prefix of titleWithoutDate and len(movie) >= 4 to prevent superfluous matches like 'I' -> 'Ice Age'
       if not titleWithoutDate.startswith(movie):
@@ -685,7 +714,7 @@ class Chatbot:
         movieRatings[titlesIdx] = np.sum(similarities * userMovieRatings)
 
       if (movieRatings.max() <= 0): # If we predict the user won't like the best movie in our list, use binary collaberative filtering instead
-        return binaryCollabFiltering()
+        return self.binaryCollabFiltering()
       else:
         return movieRatings
 
