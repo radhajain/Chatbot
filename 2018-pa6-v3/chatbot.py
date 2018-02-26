@@ -235,8 +235,15 @@ class Chatbot:
       if movieDetails in self.userMovies:
         return 'You mentioned that one already. Please tell me another.'
 
-      ### Remove extraneous whitespace ###
-      withoutTitle = input.replace("\"" + userMovie + "\"", '').strip()
+      ### Split user movie into a bag of words, and replace common occurrences with input ###
+      bag_of_words_title = userMovie.lower().split(' ')
+      input = input.lower()
+      for word in bag_of_words_title:
+        if input.__contains__(word):
+          input = input.replace(word, '')
+
+      withoutTitle = input.replace("\"", '')
+
     
       ### Must include a sentiment, e.g. "I like..." ###
       if not withoutTitle:
@@ -466,23 +473,8 @@ class Chatbot:
     ### EXTENSION 2: Disambiguating movie titles for series and year ambiguities ###
     ##############################################################################
 
-    # Check if all the movies are the same title, in which case ask for date
-    def allSame(self, currSeries):
-      first = currSeries[0][1][:-7] # currSeries is an aray of (idx, title) tuples
-      for i in range(1, len(currSeries)):
-        if first != currSeries[i][1][:-7]:
-          return False
-      return True
-
     ### Extract a single movie is in a series. Takes in a list of potential movies and returns the filtered movie ###
     def extractMovieInSeries(self, moviesInSeries, userMovie):
-      if self.allSame(moviesInSeries):
-        movieYears = [title[-5:-1] for idx, title in moviesInSeries]
-        date = raw_input("We have multiple films matching %s released in years:\n%s. What year was yours released? (e.g %s)\n" % (userMovie, str(movieYears), movieYears[0])).strip()
-        dateIdx = self.extractDate(date, movieYears)
-        return moviesInSeries[dateIdx]
-      
-      else:
         failedLastTime = False
         filter_phrase = None
         while (len(moviesInSeries) > 1):
@@ -702,6 +694,7 @@ class Chatbot:
       movieRatings = np.zeros((len(self.titles),))
       for titlesIdx, movieDetails in enumerate(self.titles):
         title, _ = movieDetails # (title, genre)
+        title = self.processMovieTitle(title)
         if (titlesIdx, title) in self.userMovies: # Don't want to return movies they've already told us
           continue
 
