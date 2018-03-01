@@ -50,7 +50,7 @@ class Chatbot:
       self.punctuation = ".,!?"
       self.alphanum = re.compile('[^a-zA-Z0-9]')
       self.ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
-      self.strongPosWords = set([self.p.stem(w) for w in ['love', 'favorite', 'amazing', 'stunning', 'great']])
+      self.strongPosWords = set([self.p.stem(w) for w in ['love', 'favorite', 'amazing', 'stunning', 'great', 'heartwarming', 'hysterical']])
       self.strongNegWords = set([self.p.stem(w) for w in ['hate', 'despise', 'disgusting', 'dull', 'annoying', 'unoriginal', 'boring', 'eh', 'meh']])
       self.intensifiers = set([self.p.stem(w) for w in ['really', 'very', 'so']])
 
@@ -61,6 +61,21 @@ class Chatbot:
       self.returnedMovies = set()
       
       ### RESPONSE SETS ###
+      self.veryPositiveReponses = ["Wait %s was one my favorite movies!!",
+                                  "I LOVED %s, so so good.",
+                                  "I've literally reccommended %s to everyone I've ever met.",
+                                  "Wow %s is SUCH a good movie.",
+                                  "YES!! All I want right now is to go snuggle up in bed and watch %s again",
+                                  "Wow you totally read my mind. %s is phenomenal.",
+                                  "I think I fancy you just because you liked %s"]
+
+      self.veryNegativeResponses = ["Yeah %s was really disappointing.",
+                                    "Right?! I thought I was the only one who didn't like %s",
+                                    "Oh for sure, I thought %s was really weird",
+                                    "I know!! I just didn't really vibe with %s",
+                                    "Yeah honestly %s was just bad"]
+
+
       self.positiveResponses = ["You liked %s. Me too!",
                                 "Yeah, %s was a great movie.",
                                 "I loved %s! Glad you enjoyed it too.",
