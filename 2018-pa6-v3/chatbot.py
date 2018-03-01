@@ -91,7 +91,17 @@ class Chatbot:
       self.catchAllAnswers = ["Cool, that's great.",
                               'Ok, got it.',
                               'Nice!',
-                              'Thanks for sharing!']
+                              'Thanks for sharing!',
+                              'You really should talk to someone about that.']
+
+      self.returnToMovies = ["\nNow let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'",
+                              "\nOk enough chitter chatter. What's another movie you can remember?",
+                              "\nSoo, back to movies?",
+                              "\nTalk movies to me."
+                              "\nI like talking about movies. Can we do that again?",
+                              "\nRemember when we were talking about movies? I liked that",
+                              "\nDude I'm not your therapist. I just wanna talk about movies.",
+                              "\nPlease stop distracting me, my boss is looking. Let's chat about movies."]
 
     #############################################################################
     # 1. WARM UP REPL
@@ -162,7 +172,7 @@ class Chatbot:
 
       ### If no movie is specified in quotation marks ###
       elif len(matches) == 0:
-        return "Sorry, I don't understand. Tell me about a movie that you have seen e.g. 'I liked \"Toy Story (1995)\"'"
+        return "Sorry, I don't understand." + random.choice(self.requestAnotherResponses)
 
       else: 
         userMovie = matches[0]
@@ -217,9 +227,9 @@ class Chatbot:
           inputTokens = input.split()
           ### Assume that if a word was capitalized (other than the first word) they meant to give us a movie ###
           if any([w.istitle() for w in inputTokens[1:]]):
-            return "Sorry I couldn't understand that last movie title you gave me!\nLet's try again, tell me about a movie you have seen e.g. 'I liked Toy Story'"
+            return "Sorry I couldn't understand that last movie title you gave me!\nLet's try again." + random.choice(self.requestAnotherResponses)
 
-          return self.checkArbitraryInput(input) + "\nNow let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'"
+          return self.checkArbitraryInput(input) + random.choice(self.returnToMovies)
 
         withoutTitle = self.removeTitle(input, movieDetails[1])
         return self.processMovieDetails(withoutTitle, movieDetails)
