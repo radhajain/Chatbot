@@ -94,14 +94,15 @@ class Chatbot:
                               'Thanks for sharing!',
                               'You really should talk to someone about that.']
 
-      self.returnToMovies = ["\nNow let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'",
-                              "\nOk enough chitter chatter. What's another movie you can remember?",
-                              "\nSoo, back to movies?",
-                              "\nTalk movies to me."
-                              "\nI like talking about movies. Can we do that again?",
-                              "\nRemember when we were talking about movies? I liked that",
-                              "\nDude I'm not your therapist. I just wanna talk about movies.",
-                              "\nPlease stop distracting me, my boss is looking. Let's chat about movies."]
+      self.returnToMovies = ["Now let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'",
+                              "Ok enough chitter chatter. What's another movie you can remember?",
+                              "Soo, back to movies?",
+                              "Please can we talk about movies?!"
+                              "Talk movies to me."
+                              "I like talking about movies. Can we do that again?",
+                              "Remember when we were talking about movies? I liked that",
+                              "You keep getting distracted. I just wanna talk about movies.",
+                              "Please stop distracting me, my boss is looking. Let's chat about movies."]
 
     #############################################################################
     # 1. WARM UP REPL
@@ -380,19 +381,19 @@ class Chatbot:
     def checkArbitraryInput(self, input):
       if input.lower().startswith("can you"):
         input = input[len("can you"):]
-        return random.choice(self.canYouAnswers) % self.trimInput(input)
+        return (random.choice(self.canYouAnswers) + "\n") % self.trimInput(input)
 
       if input.lower().startswith("what is"):
         input = input[len("what is"):]
         input = input.replace(" my ", " your ")
-        return random.choice(self.whatIsAnswers) % self.trimInput(input)
+        return (random.choice(self.whatIsAnswers) + "\n") % self.trimInput(input)
 
       if input.lower().startswith("what\'s"):
         input = input[len("what\'s"):]
         input = input.replace(" my ", " your ")
-        return random.choice(self.whatIsAnswers) % self.trimInput(input)
+        return (random.choice(self.whatIsAnswers) + "\n") % self.trimInput(input)
 
-      return random.choice(self.catchAllAnswers)
+      return ""
 
     def trimInput(self, input):
       input = input.translate(None, string.punctuation) # remove punctuation
