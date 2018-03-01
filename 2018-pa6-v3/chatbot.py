@@ -268,15 +268,17 @@ class Chatbot:
         recommendation = self.recommend()
         response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
                     'I suggest you watch "%s".\n' % recommendation + \
-                    "Would you like to hear another recommendation? (Or enter :quit if you're done)\n"
+                    "Would you like to hear another recommendation? (yes/no)"
 
         if self.is_turbo:
           ### Allow the user to ask for more recommendations ###
-          response = raw_input(response).strip()
+          print response
+          response = raw_input("> ").strip()
           while (self.getYesOrNo(response)):
             recommendation = self.recommend()
-            response = raw_input('I suggest you watch "%s".\n' % recommendation + \
-                      "Would you like to hear another recommendation? (Or enter :quit if you're done)\n").strip()
+            print('I suggest you watch "%s".\n' % recommendation)
+            print('Would you like to hear another recommendation? (yes/no)')
+            response = raw_input("> ").strip()
           return "OK. You can tell me more about your taste in movies (Or enter :quit if you're done)"
 
       else:
@@ -530,7 +532,7 @@ class Chatbot:
 
       ### movie can be a maximum of self.MAX_EDIT_DIST away from titleWithoutDate to still be considered a match ###
       if not self.editDistanceExceeds(titleWithoutDate, movie, self.MAX_EDIT_DIST) or not self.editDistanceExceeds(titleWithoutArticle, movie, self.MAX_EDIT_DIST):
-        response = raw_input("Did you mean %s? (Enter yes if this suggestion is correct)\n" % title).strip()
+        response = raw_input("Did you mean %s? (Enter yes if this suggestion is correct)\n> " % title).strip()
         self.alreadyAsked.add(title)
         return (False, self.getYesOrNo(response))
 
