@@ -374,10 +374,12 @@ class Chatbot:
 
       if input.lower().startswith("what is"):
         input = input[len("what is"):]
+        input = input.replace(" my ", " your ")
         return random.choice(self.whatIsAnswers) % self.trimInput(input)
 
       if input.lower().startswith("what\'s"):
         input = input[len("what\'s"):]
+        input = input.replace(" my ", " your ")
         return random.choice(self.whatIsAnswers) % self.trimInput(input)
 
       return random.choice(self.catchAllAnswers)
