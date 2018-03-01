@@ -82,7 +82,7 @@ class Chatbot:
 
       self.canYouAnswers = ["I most certainly can %s, but I'm a bit busy at the moment.",
                             "As much as I would like to %s right now, I'm just too excited about movies!",
-                            'Can you %s?']
+                            'I could, but can you %s?']
 
       self.whatIsAnswers = ["I'm unsure what %s is, but you're smart! I'm sure you can figure it out!",
                             "Once upon a time, a wise man from a forgotten realm spoke to me... In his infinite wisdom " + \
@@ -97,8 +97,8 @@ class Chatbot:
       self.returnToMovies = ["Now let's get back to movies. Tell me about a movie that you have seen e.g. 'I liked Toy Story'",
                               "Ok enough chitter chatter. What's another movie you can remember?",
                               "Soo, back to movies?",
-                              "Please can we talk about movies?!"
-                              "Talk movies to me."
+                              "Please can we talk about movies?!",
+                              "Talk movies to me.",
                               "I like talking about movies. Can we do that again?",
                               "Remember when we were talking about movies? I liked that",
                               "You keep getting distracted. I just wanna talk about movies.",
@@ -381,15 +381,18 @@ class Chatbot:
     def checkArbitraryInput(self, input):
       if input.lower().startswith("can you"):
         input = input[len("can you"):]
+        input = input.replace(" me ", " you ")
         return (random.choice(self.canYouAnswers) + "\n") % self.trimInput(input)
 
       if input.lower().startswith("what is"):
         input = input[len("what is"):]
+        input = input.replace(" me ", " you ")
         input = input.replace(" my ", " your ")
         return (random.choice(self.whatIsAnswers) + "\n") % self.trimInput(input)
 
       if input.lower().startswith("what\'s"):
         input = input[len("what\'s"):]
+        input = input.replace(" me ", " you ")
         input = input.replace(" my ", " your ")
         return (random.choice(self.whatIsAnswers) + "\n") % self.trimInput(input)
 
