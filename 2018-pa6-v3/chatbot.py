@@ -88,9 +88,10 @@ class Chatbot:
                             "Once upon a time, a wise man from a forgotten realm spoke to me... In his infinite wisdom " + \
                             "he told me precisely what %s is. But, alas, I forgot..."]
 
-      self.catchAllAnswers = ["Hm, that's not really what I want to talk about right now.",
+      self.catchAllAnswers = ["Cool, that's great.",
                               'Ok, got it.',
-                              'Hmm, interesting']
+                              'Nice!',
+                              'Thanks for sharing!']
 
     #############################################################################
     # 1. WARM UP REPL
@@ -373,6 +374,12 @@ class Chatbot:
 
       if input.lower().startswith("what is"):
         input = input[len("what is"):]
+        input = input.replace(" my ", " your ")
+        return random.choice(self.whatIsAnswers) % self.trimInput(input)
+
+      if input.lower().startswith("what\'s"):
+        input = input[len("what\'s"):]
+        input = input.replace(" my ", " your ")
         return random.choice(self.whatIsAnswers) % self.trimInput(input)
 
       return random.choice(self.catchAllAnswers)
