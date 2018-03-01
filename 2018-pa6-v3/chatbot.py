@@ -37,6 +37,11 @@ class Chatbot:
       self.BINARY_THRESH = 2.5
       self.MAX_EDIT_DIST = 2
       self.DATE_REGEX = r'\(?(?P<date>\d{4})\)?'
+      self.STRONG_SENTIMENT_MULTIPLIER = 10
+      self.INTENSIFIER_MULTIPLIER = 5
+
+      ### UTILS ###
+      self.p = PorterStemmer()
 
       ### TOKEN SETS ###
       self.engArticles = {'The', 'A', 'An'}
@@ -45,9 +50,9 @@ class Chatbot:
       self.punctuation = ".,!?"
       self.alphanum = re.compile('[^a-zA-Z0-9]')
       self.ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
-
-      ### UTILS ###
-      self.p = PorterStemmer()
+      self.strongPosWords = set([self.p.stem(w) for w in ['love', 'favorite', 'amazing', 'stunning', 'great']])
+      self.strongNegWords = set([self.p.stem(w) for w in ['hate', 'despise', 'disgusting', 'dull', 'annoying', 'unoriginal', 'boring', 'eh', 'meh']])
+      self.intensifiers = set([self.p.stem(w) for w in ['really', 'very', 'so']])
 
       ### DATA ###
       self.read_data() # self.titles, self.ratings, self.sentiment
@@ -145,13 +150,6 @@ class Chatbot:
       if input == ":quit":
         return goodbye_message
 
-        '''
-        TO-DO:
-          - What kind of film do you want to watch (options: highly-rated, recently released, genre, year) e.g. I like action moves from 2000 on?
-          - Ask them about the most statistically significant movies?
-          - Give them a list of top 10 e.g. ask which theyve seen and how they liked them
-          - Give the real reccccc
-        '''
       if self.is_turbo:
         return self.processCreative(input)
       else:
@@ -232,19 +230,18 @@ class Chatbot:
 
           return self.checkArbitraryInput(input) + random.choice(self.returnToMovies)
 
-        withoutTitle = self.removeTitle(input, movieDetails[1])
+        withoutTitle = self.stripMovieTitle(input)
         return self.processMovieDetails(withoutTitle, movieDetails)
 
     ### Removes the movie title from the input string ###
-    ### TO-DO: Update this function to work for I love Love is Strange ###
-    def removeTitle(self, input, userMovie):
+    def stripMovieTitle(self, input):
       ### Split user movie into a bag of words, and replace common occurrences with input ###
-      bag_of_words_title = userMovie.translate(None, string.punctuation).lower().strip().split(' ')
-      input = input.translate(None, string.punctuation).lower().strip()
-      for word in bag_of_words_title:
-        if input.__contains__(word):
-          input = input.replace(word, '')
-      return input.strip()
+      matchTokens = self.matchString.translate(None, string.punctuation).lower().strip().split()
+      input = input.translate(None, string.punctuation).lower().strip().split()
+      for i in range(len(matchTokens)):
+        if matchTokens[i] in input:
+          input.remove(matchTokens[i])
+      return ' '.join(input)
 
     #############################################################################
     # BOTH                                                                      #
@@ -298,14 +295,6 @@ class Chatbot:
 
       return response
 
-    def stripMovieTitle(self, input, userMovie):
-      ### Split user movie into a bag of words, and replace common occurrences with input ###
-      bag_of_words_title = userMovie.lower().split(' ')
-      input = input.lower()
-      for word in bag_of_words_title:
-        if input.__contains__(word):
-          input = input.replace(word, '')
-      return input
 
     #############################################################################
     # GET MOVIE DETAILS                                                          #
@@ -328,6 +317,7 @@ class Chatbot:
       for movieTitle in potentialMovieTitles:
         movieDetails = self.getMovieDetailsCreativeHelper(movieTitle)
         if (movieDetails):
+          self.matchString = movieTitle
           return movieDetails
       return None
 
@@ -619,36 +609,41 @@ class Chatbot:
     #############################################################################
 
     ### Classifies the sentiment of an input string ###
-    ### TO-DO: Test upgraded sentiment classifier   ###
     def classifySentiment(self, input):
       stemmedInputArr = self.stem(input)
-      countPos = 0
-      countNeg = 0
-      neg_state = False
+      count = 0
+      neg_state = 1
+      multiplier = 1
       for word in stemmedInputArr:
         if word in self.punctuation:
-          neg_state = False
+          neg_state = 1 # reset
+          multiplier = 1
 
         elif any(neg in word for neg in self.negationTokens):
-          neg_state = not neg_state
+          neg_state *= -1
+
+        elif word in self.intensifiers:
+          multiplier *= self.INTENSIFIER_MULTIPLIER
 
         elif word in self.sentiment:
-          if self.sentiment[word] == "pos":
-            if neg_state:
-              countNeg += 1
-            else:
-              countPos += 1
-          else:
-            if neg_state:
-              countPos += 1
-            else:
-              countNeg += 1
+          if word in self.strongPosWords:
+            count += multiplier * (self.STRONG_SENTIMENT_MULTIPLIER if neg_state > 0 else -self.STRONG_SENTIMENT_MULTIPLIER / 4) # 'not love' isn't as negative as 'hate'
+            multiplier = 1
+            continue
+          if word in self.strongNegWords:
+            count -= multiplier * (self.STRONG_SENTIMENT_MULTIPLIER if neg_state > 0 else -self.STRONG_SENTIMENT_MULTIPLIER / 4) # 'not hate' isn't as positive as 'love'
+            multiplier = 1
+            continue
 
-      if countPos > countNeg:
-        return 1
-      if countNeg > countPos:
-        return -1
-      return 0
+          if self.sentiment[word] == 'pos':
+            count += multiplier * neg_state
+          else:
+            count -= multiplier * neg_state
+          multiplier = 1
+        else:
+          multiplier = 1
+
+      return count
 
     #############################################################################
     # 3. Movie Recommendation helper functions                                  #
@@ -745,7 +740,7 @@ class Chatbot:
         for userMovieDetails in self.userMovies:
           userMovieIdx, userMovie = userMovieDetails # (index into self.titles, movie title)
           similarity = self.cosineSimilarity(self.ratingsBinary[titlesIdx], self.ratingsBinary[userMovieIdx])
-          rating = self.userMovies[userMovieDetails]
+          rating = 1 if self.userMovies[userMovieDetails] > SELF.BINARY_THRESH else -1
           ratingSums[titlesIdx] += (similarity * rating)
       return ratingSums
 
