@@ -34,7 +34,7 @@ class Chatbot:
       
       ### CONSTANTS ###
       self.NUM_MOVIES_MIN = 5
-      self.BINARY_THRESH = 2.5
+      self.BINARY_THRESH = 3.0
       self.MAX_EDIT_DIST = 2
       self.DATE_REGEX = r'\(?(?P<date>\d{4})\)?'
       self.STRONG_SENTIMENT_MULTIPLIER = 10
@@ -282,10 +282,7 @@ class Chatbot:
 
       idx, movie = movieDetails
       self.userMovies[movieDetails] = sentiment
-      if (sentiment > 0):
-        response = random.choice(self.positiveResponses) % userMovie
-      else:
-        response = random.choice(self.negativeResponses) % userMovie
+      response = self.getSentimentResponse(sentiment, movie)
 
       ### We have collected a sufficient number of movies ###
       if len(self.userMovies) >= self.NUM_MOVIES_MIN:
@@ -658,7 +655,26 @@ class Chatbot:
         else:
           multiplier = 1
 
-      return count
+      if (count == 0):
+        return 0 # unsure, ask for clarification
+
+      if count > 0:
+        return 5.0 if count >= 5 else 4.0
+
+      return 1.0 if count <= -5 else 2.0
+
+    def getSentimentReponse(sentiment, movie):
+      if (sentiment == 5.0):
+        return random.choice(self.veryPositiveResponses) % userMovie
+      if (sentiment == 4.0):
+        return random.choice(self.positiveResponses) % userMovie
+      if (sentiment == 2.0):
+        return random.choice(self.negativeResponses) % userMovie
+      if (sentiment == 1.0):
+        return random.choice(self.veryNegativeResponses) % userMovie
+
+      return random.choice(self.positiveResponses) % userMovie # should never get here
+
 
     #############################################################################
     # 3. Movie Recommendation helper functions                                  #
