@@ -102,7 +102,7 @@ class Chatbot:
       # TODO: Write a short greeting message                                      #
       #############################################################################
 
-      greeting_message = "Hi! I'm " + self.name + "! I'm going to recommend a movie to you.\nFirst I will ask you about your taste in movies. Tell me about a movie that you have seen."
+      greeting_message = "Let's get going!\nTell me about a movie that you have seen, I promise I won't judge."
 
       #############################################################################
       #                             END OF YOUR CODE                              #
@@ -762,10 +762,21 @@ class Chatbot:
     #############################################################################
     def intro(self):
       return """
-      Your task is to implement the chatbot as detailed in the PA6 instructions.
-      Remember: in the starter mode, movie names will come in quotation marks and
-      expressions of sentiment will be simple!
-      Write here the description for your own chatbot!
+      Hello! I am Seb, an all wise and all knowing movie reccomendation bot. I am here, 
+      to help you decide what to do on your lonely Friday nights, when Netflix and seems 
+      the only option. I have a vast and diverse catalog of films for your viewing pleasure,
+      just tell me some of the things you like and we'll be on our way! 
+      - I am able to recognize movie titles without quotation marks or proper capitalization (so 
+      long as the first word is capitalized).
+      - I am able to do fine grain sentiment analysis, so I can recognize just how much you love 
+      or hate a movie. 
+      - I am able to recognize misspelled titles (within reason), but I can't do much
+       about your face. 
+      - I use a non-binarized data set to provide the utmost precision in my reccomendations
+      - I respond well to arbitrary input, so ask me anything!
+      - Finally, I am able to disambiguate movie titles for series and year ambiguities
+      I hope you enjoy playing with me, as much as I have enjoyed playing with myself!!
+      Enjoy!!!!!
       """
 
 
