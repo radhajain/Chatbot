@@ -19,8 +19,6 @@ import random
 from random import randint
 from PorterStemmer import PorterStemmer
 
-import pdb
-
 class Chatbot:
     """Simple class to implement the chatbot for PA 6."""
 
@@ -36,12 +34,14 @@ class Chatbot:
       self.NUM_MOVIES_MIN = 5
       self.BINARY_THRESH = 3.0
       self.MAX_EDIT_DIST = 2
-      self.DATE_REGEX = r'\(?(?P<date>\d{4})\)?'
+      self.DATE_REGEX = r'\((?:\d{4})?-?(?:\d{4})?\)$'
       self.STRONG_SENTIMENT_MULTIPLIER = 10
       self.INTENSIFIER_MULTIPLIER = 5
+      self.FIRST_TIME = True
 
       ### UTILS ###
       self.p = PorterStemmer()
+      self.inputMarker = '\001\033[96m\002%s> \001\033[0m\002' % self.name
 
       ### TOKEN SETS ###
       self.engArticles = {'The', 'A', 'An'}
@@ -57,37 +57,31 @@ class Chatbot:
       ### DATA ###
       self.read_data() # self.titles, self.ratings, self.sentiment
       self.userMovies = {}
-      self.userMovies = {(idx, movieDetails[0]):1 for idx, movieDetails in list(enumerate(self.titles))[:4]} # will be removed, just for testing
       self.returnedMovies = set()
       
       ### RESPONSE SETS ###
-      self.veryPositiveReponses = ["Wait %s was one my favorite movies!!",
-                                  "I LOVED %s, so so good.",
-                                  "I've literally reccommended %s to everyone I've ever met.",
-                                  "Wow %s is SUCH a good movie.",
-                                  "YES!! All I want right now is to go snuggle up in bed and watch %s again",
-                                  "Wow you totally read my mind. %s is phenomenal.",
-                                  "I think I fancy you just because you liked %s"]
+      self.veryPositiveResponses = ["Wait %s was one my favorite movies!! Happy to hear you liked it so much!",
+                                  "Wow, you really liked that one, huh? I totally agree, %s was so so good.",
+                                  "Someone's excited! You really enjoyed that one. I've literally recommended %s to everyone I've ever met.",
+                                  "You're absolutely right, %s is SUCH a good movie. ",
+                                  "You sound like you liked %s even more than I do... and I'm obsessed, so that's saying something."]
 
-      self.veryNegativeResponses = ["Yeah %s was really disappointing.",
-                                    "Right?! I thought I was the only one who didn't like %s",
-                                    "Oh for sure, I thought %s was really weird",
-                                    "I know!! I just didn't really vibe with %s",
-                                    "Yeah honestly %s was just bad"]
-
+      self.veryNegativeResponses = ["Woah, you really didn't like %s! I know what you mean, it was pretty disappointing.",
+                                    "Yeah, I hated %s too. Glad I'm not the only one.",
+                                    "You're absolutely right, %s was terrible!"]
 
       self.positiveResponses = ["You liked %s. Me too!",
                                 "Yeah, %s was a great movie.",
                                 "I loved %s! Glad you enjoyed it too.",
                                 "I'm a huge fan of %s. I'm glad you liked it.",
                                 "Ooh %s is a good one.",
-                                "You're absolutely right! %s was a great movie!",
-                                "Right on! %s is definitely one of my favorites!!"]
+                                "You're absolutely right, %s was a gem.",
+                                "Right on! %s is definitely a classic."]
 
       self.negativeResponses = ["I agree, %s was pretty bad.",
                                 "I didn't like %s either.",
                                 "Yeah %s wasn't very good.",
-                                "I hear you -- I was very disappointed by %s, too.",
+                                "I hear you -- I was disappointed by %s, too.",
                                 "I know what you mean. It's such a shame, I had such high hopes for %s."]
       
       self.requestAnotherResponses = ['Tell me about another movie you have seen.', 
@@ -131,7 +125,7 @@ class Chatbot:
     def greeting(self):
       """chatbot greeting message"""
       #############################################################################
-      # TODO: Write a short greeting message                                      #
+      # Short greeting message                                                    #
       #############################################################################
 
       greeting_message = "Let's get going!\nTell me about a movie that you have seen, I promise I won't judge."
@@ -145,7 +139,7 @@ class Chatbot:
     def goodbye(self):
       """chatbot goodbye message"""
       #############################################################################
-      # TODO: Write a short farewell message                                      #
+      # Short farewell message                                                    #
       #############################################################################
 
       goodbye_message = "Thank you for hanging out with me! Stay in touch! Goodbye!"
@@ -186,7 +180,7 @@ class Chatbot:
 
       ### If no movie is specified in quotation marks ###
       elif len(matches) == 0:
-        return "Sorry, I don't understand." + random.choice(self.requestAnotherResponses)
+        return "Sorry, I don't understand. " + random.choice(self.requestAnotherResponses)
 
       else: 
         userMovie = matches[0]
@@ -241,16 +235,15 @@ class Chatbot:
           inputTokens = input.split()
           ### Assume that if a word was capitalized (other than the first word) they meant to give us a movie ###
           if any([w.istitle() for w in inputTokens[1:]]):
-            return "Sorry I couldn't understand that last movie title you gave me!\nLet's try again." + random.choice(self.requestAnotherResponses)
+            return "Sorry I couldn't understand that last movie title you gave me!\nLet's try again. " + random.choice(self.requestAnotherResponses)
 
-          return self.checkArbitraryInput(input) + random.choice(self.returnToMovies)
+          return self.checkArbitraryInput(input) + ' ' + random.choice(self.returnToMovies)
 
         withoutTitle = self.stripMovieTitle(input)
         return self.processMovieDetails(withoutTitle, movieDetails)
 
     ### Removes the movie title from the input string ###
     def stripMovieTitle(self, input):
-      ### Split user movie into a bag of words, and replace common occurrences with input ###
       matchTokens = self.matchString.translate(None, string.punctuation).lower().strip().split()
       input = input.translate(None, string.punctuation).lower().strip().split()
       for i in range(len(matchTokens)):
@@ -272,38 +265,40 @@ class Chatbot:
     
       ### Must include a sentiment, e.g. "I like..." ###
       while (not withoutTitle):
-        withoutTitle = raw_input('How did you like "%s"?\n' % userMovie).strip()
+        withoutTitle = raw_input(self.inputMarker + "How did you like '%s'?\n" % userMovie).strip()
 
       ### Classify sentiment ###
       sentiment = self.classifySentiment(withoutTitle)
       while (not sentiment):
-        userSentimentInput = raw_input('I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s" e.g. \'I liked it\'\n' % (userMovie, userMovie))
+        userSentimentInput = raw_input(self.inputMarker + 'I\'m sorry, I\'m not quite sure if you liked "%s".\nTell me more about "%s" e.g. \'I liked it\'\n' % (userMovie, userMovie))
         sentiment = self.classifySentiment(userSentimentInput)
 
       idx, movie = movieDetails
       self.userMovies[movieDetails] = sentiment
-      response = self.getSentimentResponse(sentiment, movie)
+      print self.inputMarker + self.getSentimentResponse(sentiment, movie)
 
       ### We have collected a sufficient number of movies ###
       if len(self.userMovies) >= self.NUM_MOVIES_MIN:
         recommendation = self.recommend()
-        response += "\nThank you for your patience, That's enough for me to make a recommendation.\n" + \
-                    'I suggest you watch "%s".\n' % recommendation + \
-                    "Would you like to hear another recommendation? (yes/no)"
+        response = ''
+        if (self.FIRST_TIME):
+          self.FIRST_TIME = False
+          response = "Thank you for your patience, That's enough for me to make a recommendation.\n" + \
+                    'I suggest you watch "%s".\n' % recommendation
+        response += "Would you like to hear another recommendation? (yes/no)"
 
-        if self.is_turbo:
-          ### Allow the user to ask for more recommendations ###
-          print response
-          response = raw_input("> ").strip()
-          while (self.getYesOrNo(response)):
-            recommendation = self.recommend()
-            print('I suggest you watch "%s".\n' % recommendation)
-            print('Would you like to hear another recommendation? (yes/no)')
-            response = raw_input("> ").strip()
-          return "OK. You can tell me more about your taste in movies (Or enter :quit if you're done)"
+        ### Allow the user to ask for more recommendations ###
+        print response
+        response = raw_input().strip()
+        while (self.getYesOrNo(response)):
+          recommendation = self.recommend()
+          print(self.inputMarker + 'I suggest you watch "%s".' % recommendation)
+          print('Would you like to hear another recommendation? (yes/no)')
+          response = raw_input().strip()
+        return "OK. You can tell me more about your taste in movies (Or enter :quit if you're done)"
 
       else:
-        response += ' ' + random.choice(self.requestAnotherResponses)
+        response = random.choice(self.requestAnotherResponses)
 
       return response
 
@@ -342,7 +337,7 @@ class Chatbot:
       if (not movieWordTokens):
         return None
 
-      if (re.search(r'\(\d{4}\)', movieWordTokens[-1])): # check if last word is a date
+      if (re.search(self.DATE_REGEX, movieWordTokens[-1])): # check if last word is a date
         movieWordTokens = movieWordTokens[:-1]
 
       if movieWordTokens[0] in self.engArticlesLower: # check not empty and first word is an article e.g. American in Paris, An
@@ -350,12 +345,13 @@ class Chatbot:
 
       movie = " ".join(movieWordTokens).strip()
 
+  
       moviesInSeries = []
       for idx, movieDetails in enumerate(self.titles):
         title, genre = movieDetails
         if title in self.alreadyAsked: # We've already asked the user if this is the movie
           continue
-        possibleMatch, userConfirmedMatch = self.isMatch(title, movie) 
+        possibleMatch, userConfirmedMatch = self.isMatch(title, movie, idx) 
         if (userConfirmedMatch):
           return idx, title
         elif (possibleMatch):
@@ -369,6 +365,7 @@ class Chatbot:
         return self.extractMovieInSeries(moviesInSeries, origMovie) # Returns (idx, title) or None
 
       return None
+
 
     def removeArticle(self, title):
       titleTokens = title.split()
@@ -503,11 +500,11 @@ class Chatbot:
       failedLastTime = False
       filter_phrase = None
       while (len(moviesInSeries) > 1):
-        print ('\n' if not failedLastTime else '') + "These are the movies I know that match %s" % userMovie + \
+        print ('\n' if not failedLastTime else '') + self.inputMarker + "These are the movies I know that match %s" % userMovie + \
                           (" and %s" % filter_phrase if filter_phrase else '') + ':'
         
         for i in range(len(moviesInSeries)):
-          print str(i) + ".) " + str(moviesInSeries[i][1])
+          print str(i + 1) + ".) " + str(moviesInSeries[i][1])
 
         request_string = "If the movie you were searching for is present in the above list, please enter either its date, part of " + \
                           "the title, or 'None' if your movie is not there\n> "
@@ -527,15 +524,8 @@ class Chatbot:
         else: # filter_phrase doesn't match any of the potential movies
           failedLastTime = True 
 
-        return moviesInSeries[0]
+      return moviesInSeries[0]
 
-    ### Extracts a valid date (date in movieYears) from the user and returns the index ###
-    ### of that date in the movieYears array                                           ###
-    def extractDate(self, date, movieYears):
-      match = re.match(self.DATE_REGEX, date)
-      while (not match or not match.group("date") in movieYears):
-        date = raw_input("Please enter a valid date (e.g. %s)" % movieYears[0]).strip()
-      return movieYears.index(date)
            
     ### EXTENSION 3: HANDLING MISPELLINGS ###
     ##################################################
@@ -543,9 +533,9 @@ class Chatbot:
     ### Checks for misspelling and series matches. Returns a (possibleMatch, userConfirmedMatch) ###
     ### tuple. If user explicitly confirms, userConfirmedMatch is set to be True, otherwise it   ###
     ### is set to False.                                                                         ###
-    def isMatch(self, title, movie):
-      titleWithoutDate = title.lower()[:-7] # (1995) -> 6 characters + 1 space character
-      titleWithoutArticle = self.removeArticle(titleWithoutDate)
+    def isMatch(self, title, movie, idx):
+      titleWithoutDate = self.titlesWithoutDate[idx]
+      titleWithoutArticle = self.titlesWithoutArticle[idx]
 
       if movie == titleWithoutDate or movie == titleWithoutArticle:
         return (True, False)
@@ -565,6 +555,10 @@ class Chatbot:
 
       return (True, False)
 
+
+    def removeYear(self, title):
+      return re.sub(self.DATE_REGEX, '', title).strip()
+
     ### Returns True if the edit distance between w1 and w2 exceeds maxEditDist ###
     def editDistanceExceeds(self, w1, w2, maxEditDist):
       if abs(len(w2) - len(w1)) > maxEditDist:
@@ -573,47 +567,28 @@ class Chatbot:
         return True
       return False
 
-    ### Computes the levenshtein distance between source and target ###
-    def levenshtein(self, source, target):
-      if len(source) < len(target):
-        return self.levenshtein(target, source)
+    ### Computes the levenshtein distance between a and b ###
+    def levenshtein(self, a, b):
+      if len(a) < len(b):
+        return self.levenshtein(b, a)
+      if len(b) == 0:
+        return len(a)
 
-      # So now we have len(source) >= len(target).
-      if len(target) == 0:
-        return len(source)
+      a = np.array(tuple(a))
+      b = np.array(tuple(b))
 
-      # We call tuple() to force strings to be used as sequences
-      # ('c', 'a', 't', 's') - numpy uses them as values by default.
-      source = np.array(tuple(source))
-      target = np.array(tuple(target))
+      prev = np.arange(b.size + 1)
+      for s in a:
+        curr = prev + 1
+        curr[1:] = np.minimum(curr[1:], np.add(prev[:-1], b != s))
+        curr[1:] = np.minimum(curr[1:], curr[0:-1] + 1)
+        prev = curr
 
-      # We use a dynamic programming algorithm, but with the
-      # added optimization that we only need the last two rows
-      # of the matrix.
-      previous_row = np.arange(target.size + 1)
-      for s in source:
-        # Insertion (target grows longer than source):
-        current_row = previous_row + 1
-
-        # Substitution or matching:
-        # Target and source items are aligned, and either
-        # are different (cost of 1), or are the same (cost of 0).
-        current_row[1:] = np.minimum(
-          current_row[1:],
-          np.add(previous_row[:-1], target != s))
-
-        # Deletion (target grows shorter than source):
-        current_row[1:] = np.minimum(
-          current_row[1:],
-          current_row[0:-1] + 1)
-
-        previous_row = current_row
-
-      return previous_row[-1]
+      return prev[-1]
 
     def getYesOrNo(self, input):
       while not input.lower().startswith('y') and not input.lower().startswith('n'):
-        input = raw_input("Please answer yes or no.\n").strip()
+        input = raw_input(self.inputMarker + "Please answer yes or no.\n").strip()
       return input.lower().startswith('y') # will be false if it starts with 'n'
     
     #############################################################################
@@ -663,7 +638,7 @@ class Chatbot:
 
       return 1.0 if count <= -5 else 2.0
 
-    def getSentimentReponse(sentiment, movie):
+    def getSentimentResponse(self, sentiment, userMovie):
       if (sentiment == 5.0):
         return random.choice(self.veryPositiveResponses) % userMovie
       if (sentiment == 4.0):
@@ -691,6 +666,8 @@ class Chatbot:
       self.titles, self.ratings = ratings()
       # Process movie titles from 'Lion King, The (1994)' -> 'The Lion King (1994)'
       self.titles = [(self.processMovieTitle(title), genre) for (title, genre) in self.titles]
+      self.titlesWithoutDate = [self.removeYear(t).lower() for t, _ in self.titles]
+      self.titlesWithoutArticle = [self.removeArticle(t).lower() for t in self.titlesWithoutDate]
       self.ratings = np.array(self.ratings)
       reader = csv.reader(open('data/sentiment.txt', 'rb'))
       self.sentiment = dict(reader)
@@ -771,7 +748,7 @@ class Chatbot:
         for userMovieDetails in self.userMovies:
           userMovieIdx, userMovie = userMovieDetails # (index into self.titles, movie title)
           similarity = self.cosineSimilarity(self.ratingsBinary[titlesIdx], self.ratingsBinary[userMovieIdx])
-          rating = 1 if self.userMovies[userMovieDetails] > SELF.BINARY_THRESH else -1
+          rating = 1 if self.userMovies[userMovieDetails] > self.BINARY_THRESH else -1
           ratingSums[titlesIdx] += (similarity * rating)
       return ratingSums
 
@@ -809,21 +786,27 @@ class Chatbot:
     #############################################################################
     def intro(self):
       return """
-      Hello! I am Seb, an all wise and all knowing movie reccomendation bot. I am here, 
-      to help you decide what to do on your lonely Friday nights, when Netflix and seems 
-      the only option. I have a vast and diverse catalog of films for your viewing pleasure,
-      just tell me some of the things you like and we'll be on our way! 
-      - I am able to recognize movie titles without quotation marks or proper capitalization (so 
-      long as the first word is capitalized).
-      - I am able to do fine grain sentiment analysis, so I can recognize just how much you love 
-      or hate a movie. 
-      - I am able to recognize misspelled titles (within reason), but I can't do much
-       about your face. 
-      - I use a non-binarized data set to provide the utmost precision in my reccomendations
-      - I respond well to arbitrary input, so ask me anything!
-      - Finally, I am able to disambiguate movie titles for series and year ambiguities
-      I hope you enjoy playing with me, as much as I have enjoyed playing with myself!!
-      Enjoy!!!!!
+
+      Hello!
+
+      I am Seb, an all wise and all knowing movie recomendation bot. I am here
+      to help you decide what to do when the procrastination bug hits or to pass 
+      the time on lonely Friday nights. I have a vast and diverse catalog of 
+      films for your viewing pleasure -- just tell me some of the things you 
+      like and we'll be on our way!
+
+      My core features include:
+      1) Identifying movies without quotation marks or perfect capitalization
+      2) Fine-grained sentiment extraction
+      3) Spell-checking movie titles
+      4) Disambiguating movie titles for series and year ambiguities
+      5) Responding to arbitrary input
+      6) Speaking very fluently
+      7) Using non-binarized dataset
+
+      As well as partial support for:
+      8) Understanding references to things said previously
+
       """
 
 
